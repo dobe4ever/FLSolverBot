@@ -1,3 +1,7 @@
+To run the Telegram bot locally in this workspace, use the command:
+
+`node src/index.js`
+
 # Overview
 
 This is a Telegram bot application called "FL Solver Bot" built with Node.js. The bot is designed to interact with users on Telegram, currently implementing basic greeting functionality through the `/start` command. The project uses the `node-telegram-bot-api` library to handle Telegram Bot API interactions and is configured to run on Replit with environment-based token management.
