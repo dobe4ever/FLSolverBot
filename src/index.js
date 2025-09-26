@@ -31,13 +31,7 @@ if (!process.env.GEMINI_API_KEY) {
     process.exit(1);
 }
 
-let bot;
-if (process.env.TELEGRAM_WEBHOOK_URL) {
-    bot = new TelegramBot(token, { webHook: { port: PORT } });
-    bot.setWebHook(`${process.env.TELEGRAM_WEBHOOK_URL}/${token}`);
-} else {
-    bot = new TelegramBot(token, { polling: true });
-}
+const bot = new TelegramBot(token, { polling: true });
 
 /**
  * Formats a card string with a colored emoji for its suit.
