@@ -5,6 +5,22 @@ const { performance } = require('perf_hooks');
 const { solveOptimizedV2, parseCard } = require('./solver/solver.js');
 const { identifyCardsFromImage } = require('./services/gemini.service.js');
 
+// ========== NEW CODE START: HTTP Server for Render ==========
+const express = require('express');
+const app = express();
+
+// Simple health check endpoint to keep Render happy
+app.get('/', (req, res) => {
+    res.send('🚀 FL Solver Bot is alive and solving poker hands!');
+});
+
+// Start the HTTP server on the port Render assigns
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🌐 Health check server running on port ${PORT}`);
+});
+// ========== NEW CODE END: HTTP Server for Render ==========
+
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
 if (!token) {
