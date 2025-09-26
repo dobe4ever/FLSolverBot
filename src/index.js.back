@@ -1,5 +1,3 @@
-// src/index.js
-
 const TelegramBot = require('node-telegram-bot-api');
 const { performance } = require('perf_hooks');
 const { solveOptimizedV2, parseCard } = require('./solver/solver.js');
@@ -75,9 +73,9 @@ async function runSolverAndReply(chatId, cardString) {
 
         const resultMessage = `*Optimal Arrangement Found!*
 
-\`${frontFormatted}\`
-\`${middleFormatted}\`
-\`${backFormatted}\`
+*Front:*   \`${frontFormatted}\`
+*Middle:* \`${middleFormatted}\`
+*Back:*     \`${backFormatted}\`
 
 *Discards:* \`${discardsFormatted}\`
 

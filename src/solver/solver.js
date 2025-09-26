@@ -219,7 +219,11 @@ function solveOptimizedV2(parsedCards) {
   }
   const finalUsedIndices = new Set([...finalChoice.backData.indices, ...finalChoice.middleData.indices, ...finalChoice.frontData.indices]);
   const discardIndices = allCardIndices.filter(i => !finalUsedIndices.has(i));
+  
+  // const bestResult = { points: finalChoice.points, finalEV: finalPoints, isRepeat: isRepeatChoice, discards: discardIndices.map((i) => parsedCards[i].str), front: finalChoice.frontData.hand.map((c) => c.str), middle: finalChoice.middleData.hand.map((c) => c.str), back: finalChoice.backData.hand.map((c) => c.str) };
+  // return { best: bestResult };
 
+// New code to sort the cards by rank before returning the result
   const sortByRankDesc = (cards) =>
     [...cards].sort((a, b) => b.rank - a.rank).map((c) => c.str);
 
@@ -234,6 +238,8 @@ function solveOptimizedV2(parsedCards) {
   };
 
   return { best: bestResult };
+
+// New code ends here. If it doesnt work, delete new code and uncomment the code block just above the new code.
   
 }
 
