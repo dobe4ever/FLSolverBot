@@ -4,6 +4,7 @@ const TelegramBot = require('node-telegram-bot-api');
 
 // ...Render fix...
 const http = require('http');
+
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
     res.writeHead(200, {'Content-Type': 'text/plain'});
@@ -30,7 +31,7 @@ if (!process.env.GEMINI_API_KEY) {
     process.exit(1);
 }
 
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(token);
 
 /**
  * Formats a card string with a colored emoji for its suit.
@@ -106,7 +107,6 @@ async function runSolverAndReply(chatId, cardString) {
     }
 }
 
-// --- /start command ---
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     const startMessage = `Hello! 👋 Welcome to the FL Solver Bot!
@@ -115,6 +115,30 @@ Just send me a screenshot of your cards, and I'll find the optimal arrangement f
 `;
     bot.sendMessage(chatId, startMessage, { parse_mode: 'Markdown' });
 });
+// --- Set up webhook for Render ---
+const WEBHOOK_URL = process.env.WEBHOOK_URL || `https://${process.env.RENDER_EXTERNAL_HOSTNAME || 'flsolverbot-1.onrender.com'}`;
+const WEBHOOK_PATH = `/bot${token}`;
+bot.setWebHook(WEBHOOK_URL + WEBHOOK_PATH);
+
+// --- Express-style handler for Telegram webhook ---
+server.on('request', (req, res) => {
+    if (req.url === WEBHOOK_PATH && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+            try {
+                const update = JSON.parse(body);
+                bot.processUpdate(update);
+                res.writeHead(200);
+                res.end('OK');
+            } catch (err) {
+                res.writeHead(400);
+                res.end('Bad Request');
+            }
+        });
+    }
+});
+// ...existing code...
 
 // --- /solve command (for text input) ---
 bot.onText(/\/solve (.+)/, (msg, match) => {
