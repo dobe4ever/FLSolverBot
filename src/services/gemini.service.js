@@ -36,7 +36,7 @@ Example: \`\`\`AS KH TC 9D\`\`\``;
  */
 async function identifyCardsFromImage(imageBuffer) {
     try {
-        const model = 'gemini-pro-latest';
+        const model = 'gemini-flash-latest';
         
         const config = {
             temperature: temperature,
