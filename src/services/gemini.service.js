@@ -1,13 +1,33 @@
 // src/services/gemini.service.js
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenAI } = require("@google/genai");
 
 // Initialize the Gemini client
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const ai = new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+});
 
 const temperature = 0;
-const systemInstruction = `You will be analyzing a screenshot of a poker app that shows several playing cards in a row. These cards use 4 colors: Green for clubs, blue for diamonds, red for hearts, and black for spades. Your task is to identify each card's rank and suit, then output them in standard poker notation. Instructions: First, carefully identify each card by writing out the rank, color and suit of one card at a time, starting from the first card on the left. E.g., '1. ten, green, clubs. 2. queen, green, clubs. 3. queen, black, spades. And so on...' Then return the final result formatted as standard poker notation to represent each card like this: e.g., AS for Ace of Spades, TC for ten of clubs, etc, cards separated by single spaces and all enclosed in triple backticks.`;
+const systemInstruction = `You are analyzing a screenshot of a poker app showing playing cards in a row.
+
+STEP 1 - IDENTIFY EACH CARD:
+List each card from left to right, writing out the full rank and suit in words.
+Format: "1. [rank], [suit]. 2. [rank], [suit]." etc.
+
+STEP 2 - CONVERT TO STANDARD NOTATION:
+Use this exact notation system:
+- RANKS: 2 3 4 5 6 7 8 9 T J Q K A
+  (T = Ten, J = Jack, Q = Queen, K = King, A = Ace)
+- SUITS: C D H S
+  (C = Clubs, D = Diamonds, H = Hearts, S = Spades)
+
+CRITICAL: 
+- Ten is ALWAYS written as 'T', NEVER as '10'
+- Each card is exactly 2 characters: rank + suit
+
+STEP 3 - OUTPUT:
+Provide all cards in a single line, separated by single spaces, enclosed in triple backticks.
+Example: \`\`\`AS KH TC 9D\`\`\``;
 
 /**
  * Identifies cards from an image buffer using Gemini Vision.
@@ -16,26 +36,41 @@ const systemInstruction = `You will be analyzing a screenshot of a poker app tha
  */
 async function identifyCardsFromImage(imageBuffer) {
     try {
-        const prompt = {
-            contents: [{
-                role: 'user',
-                parts: [{
-                    inlineData: {
-                        mimeType: 'image/jpeg', // Assuming jpeg, but Gemini is flexible
-                        data: imageBuffer.toString("base64"),
-                    },
-                }],
-            }],
-            systemInstruction: {
-                parts: [{ text: systemInstruction }]
+        const model = 'gemini-pro-latest';
+        
+        const config = {
+            temperature: temperature,
+            thinkingConfig: {
+                thinkingBudget: 0,
             },
-            generationConfig: {
-                temperature: temperature, // You can also just write `temperature,`
-            }
+            systemInstruction: [
+                {
+                    text: systemInstruction,
+                }
+            ],
         };
 
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
+        const contents = [
+            {
+                role: 'user',
+                parts: [
+                    {
+                        inlineData: {
+                            mimeType: 'image/jpeg',
+                            data: imageBuffer.toString("base64"),
+                        },
+                    },
+                ],
+            },
+        ];
+
+        const response = await ai.models.generateContent({
+            model,
+            config,
+            contents,
+        });
+
+        const responseText = response.text;
 
         // Extract the content from between the triple backticks
         const match = responseText.match(/\`\`\`([\s\S]*?)\`\`\`/);
@@ -45,7 +80,7 @@ async function identifyCardsFromImage(imageBuffer) {
             return match[1].trim();
         } else {
             console.error("Gemini response did not contain the expected format:", responseText);
-            return null; // Or throw an error if you prefer
+            return null;
         }
 
     } catch (error) {
