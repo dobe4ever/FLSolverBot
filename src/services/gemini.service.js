@@ -8,26 +8,78 @@ const ai = new GoogleGenAI({
 });
 
 const temperature = 0;
-const systemInstruction = `You are analyzing a screenshot of a poker app showing playing cards in a row.
+const systemInstruction = `You are analyzing a screenshot of a poker app showing the hero's cards face up in a row. Your job is to extract all cards from the image, one by one, and output them in standard poker notation.
 
-STEP 1 - IDENTIFY EACH CARD:
-List each card from left to right, writing out the full rank and suit in words.
-Format: "1. [rank], [suit]. 2. [rank], [suit]." etc.
+STEP 1 - CAREFULLY IDENTIFY EACH CARD:
+List each card, writing out the rank and suit in words.
+Format:
+1. [rank], [suit]
+2. [rank], [suit]
+etc.
 
 STEP 2 - CONVERT TO STANDARD NOTATION:
 Use this exact notation system:
 - RANKS: 2 3 4 5 6 7 8 9 T J Q K A
-  (T = Ten, J = Jack, Q = Queen, K = King, A = Ace)
-- SUITS: C D H S
-  (C = Clubs, D = Diamonds, H = Hearts, S = Spades)
+- SUITS: C = Clubs, D = Diamonds, H = Hearts, S = Spades
 
 CRITICAL: 
 - Ten is ALWAYS written as 'T', NEVER as '10'
 - Each card is exactly 2 characters: rank + suit
+- Example: TC = Ten of Clubs, 9H = Nine of Hearts, AS = Ace of Spades
 
 STEP 3 - OUTPUT:
-Provide all cards in a single line, separated by single spaces, enclosed in triple backticks.
-Example: \`\`\`AS KH TC 9D\`\`\``;
+Provide all cards in a single line, separated by single spaces, enclosed in triple backticks.`;
+
+// Model configurations - easy to add new models here
+const MODEL_CONFIGS = {
+    'lite': {
+        name: 'gemini-flash-lite-latest',
+        displayName: 'Gemini Flash Lite',
+        thinkingBudget: -1,
+    },
+    'flash': {
+        name: 'gemini-flash-latest',
+        displayName: 'Gemini Flash',
+        thinkingBudget: -1,
+    },
+    'pro': {
+        name: 'gemini-2.5-pro',
+        displayName: 'Gemini 2.5 Pro',
+        thinkingBudget: -1,
+    },
+};
+
+// Default model
+let currentModelKey = 'flash';
+
+/**
+ * Sets the current model to use
+ * @param {string} modelKey - Key from MODEL_CONFIGS
+ * @returns {boolean} - True if model was set successfully
+ */
+function setModel(modelKey) {
+    if (MODEL_CONFIGS[modelKey]) {
+        currentModelKey = modelKey;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Gets the current model configuration
+ * @returns {object} - Current model config
+ */
+function getCurrentModel() {
+    return MODEL_CONFIGS[currentModelKey];
+}
+
+/**
+ * Gets all available models
+ * @returns {object} - All model configurations
+ */
+function getAvailableModels() {
+    return MODEL_CONFIGS;
+}
 
 /**
  * Identifies cards from an image buffer using Gemini Vision.
@@ -36,12 +88,12 @@ Example: \`\`\`AS KH TC 9D\`\`\``;
  */
 async function identifyCardsFromImage(imageBuffer) {
     try {
-        const model = 'gemini-flash-latest';
+        const modelConfig = MODEL_CONFIGS[currentModelKey];
         
         const config = {
             temperature: temperature,
             thinkingConfig: {
-                thinkingBudget: 0,
+                thinkingBudget: modelConfig.thinkingBudget,
             },
             systemInstruction: [
                 {
@@ -65,7 +117,7 @@ async function identifyCardsFromImage(imageBuffer) {
         ];
 
         const response = await ai.models.generateContent({
-            model,
+            model: modelConfig.name,
             config,
             contents,
         });
@@ -89,4 +141,9 @@ async function identifyCardsFromImage(imageBuffer) {
     }
 }
 
-module.exports = { identifyCardsFromImage };
+module.exports = { 
+    identifyCardsFromImage, 
+    setModel, 
+    getCurrentModel, 
+    getAvailableModels 
+};

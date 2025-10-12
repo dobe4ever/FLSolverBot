@@ -3,7 +3,12 @@
 const TelegramBot = require('node-telegram-bot-api');
 const { performance } = require('perf_hooks');
 const { solveOptimizedV2, parseCard } = require('./solver/solver.js');
-const { identifyCardsFromImage } = require('./services/gemini.service.js');
+const { 
+    identifyCardsFromImage, 
+    setModel, 
+    getCurrentModel, 
+    getAvailableModels 
+} = require('./services/gemini.service.js');
 
 // ========== NEW CODE START: HTTP Server for Render ==========
 const express = require('express');
@@ -108,19 +113,113 @@ async function runSolverAndReply(chatId, cardString) {
     }
 }
 
+// ========== BOT COMMANDS: ==========
 // --- /start command ---
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
+    const currentModel = getCurrentModel();
     const startMessage = `Hello! 👋 Welcome to the FL Solver Bot!
 
 Just send me a screenshot of your cards, and I'll find the optimal arrangement for you.
+
+*Current Vision Model:* ${currentModel.displayName}
 `;
     bot.sendMessage(chatId, startMessage, { parse_mode: 'Markdown' });
 });
 
-// --- /solve command (for text input) ---
-bot.onText(/\/solve (.+)/, (msg, match) => {
-    runSolverAndReply(msg.chat.id, match[1]);
+// --- /lite command (switch to Flash) ---
+bot.onText(/\/lite/, (msg) => {
+    const chatId = msg.chat.id;
+    const success = setModel('lite');
+    
+    if (success) {
+        const newModel = getCurrentModel();
+        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    } else {
+        bot.sendMessage(chatId, '❌ Error switching model');
+    }
+});
+// --- /flash command (switch to Flash) ---
+bot.onText(/\/flash/, (msg) => {
+    const chatId = msg.chat.id;
+    const success = setModel('flash');
+    
+    if (success) {
+        const newModel = getCurrentModel();
+        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    } else {
+        bot.sendMessage(chatId, '❌ Error switching model');
+    }
+});
+// --- /pro command (switch to Pro) ---
+bot.onText(/\/pro/, (msg) => {
+    const chatId = msg.chat.id;
+    const success = setModel('pro');
+    
+    if (success) {
+        const newModel = getCurrentModel();
+        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    } else {
+        bot.sendMessage(chatId, '❌ Error switching model');
+    }
+});
+
+// --- /model command (switch models) ---
+bot.onText(/\/model/, (msg) => {
+    const chatId = msg.chat.id;
+    const models = getAvailableModels();
+    const currentModel = getCurrentModel();
+    
+    const keyboard = {
+        inline_keyboard: Object.keys(models).map(key => [{
+            text: `${models[key].displayName}${key === Object.keys(models).find(k => models[k].name === currentModel.name) ? ' ✓' : ''}`,
+            callback_data: `model_${key}`
+        }])
+    };
+    
+    bot.sendMessage(chatId, '*Select Vision Model:*', { 
+        parse_mode: 'Markdown',
+        reply_markup: keyboard 
+    });
+});
+
+// --- /status command ---
+bot.onText(/\/status/, (msg) => {
+    const chatId = msg.chat.id;
+    const currentModel = getCurrentModel();
+    
+    const statusMessage = `*Current Bot Settings:*
+
+*Vision Model:* ${currentModel.displayName}
+*Model ID:* \`${currentModel.name}\`
+*Thinking Budget:* ${currentModel.thinkingBudget}
+
+Use /model to switch models.
+`;
+    bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
+});
+
+// --- Handle model selection callbacks ---
+bot.on('callback_query', (query) => {
+    const chatId = query.message.chat.id;
+    const data = query.data;
+    
+    if (data.startsWith('model_')) {
+        const modelKey = data.replace('model_', '');
+        const success = setModel(modelKey);
+        
+        if (success) {
+            const newModel = getCurrentModel();
+            bot.answerCallbackQuery(query.id, { text: `Switched to ${newModel.displayName}` });
+            bot.editMessageText(`✅ *Vision model changed to:* ${newModel.displayName}`, {
+                chat_id: chatId,
+                message_id: query.message.message_id,
+                parse_mode: 'Markdown'
+            });
+        } else {
+            bot.answerCallbackQuery(query.id, { text: 'Error switching model' });
+        }
+    }
 });
 
 // --- Photo Handler (for image input) ---
