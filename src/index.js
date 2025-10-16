@@ -3,12 +3,8 @@
 const TelegramBot = require('node-telegram-bot-api');
 const { performance } = require('perf_hooks');
 const { solveOptimizedV2, parseCard } = require('./solver/solver.js');
-const { 
-    identifyCardsFromImage, 
-    setModel, 
-    getCurrentModel, 
-    getAvailableModels 
-} = require('./services/gemini.service.js');
+const geminiService = require('./services/gemini.service.js');
+const mistralService = require('./services/mistral.service.js');
 
 // ========== NEW CODE START: HTTP Server for Render ==========
 const express = require('express');
@@ -36,8 +32,82 @@ if (!process.env.GEMINI_API_KEY) {
     console.error('Error: GEMINI_API_KEY is not set!');
     process.exit(1);
 }
+if (!process.env.MISTRAL_API_KEY) {
+    console.error('Error: MISTRAL_API_KEY is not set!');
+    process.exit(1);
+}
 
 const bot = new TelegramBot(token, { polling: true });
+
+// ========== MODEL MANAGEMENT ==========
+
+// Create a unified model config by merging both services
+function getAllModels() {
+    const geminiModels = geminiService.getAvailableModels();
+    const mistralModels = mistralService.getAvailableModels();
+    
+    // Add provider field to models
+    const geminiWithProvider = {};
+    for (const key in geminiModels) {
+        geminiWithProvider[key] = {
+            ...geminiModels[key],
+            provider: 'gemini'
+        };
+    }
+    
+    const mistralWithProvider = {};
+    for (const key in mistralModels) {
+        mistralWithProvider[key] = {
+            ...mistralModels[key],
+            provider: 'mistral'
+        };
+    }
+    
+    return { ...geminiWithProvider, ...mistralWithProvider };
+}
+
+// Track current provider and model
+let currentProvider = 'gemini';
+let currentModelKey = 'flash';
+
+function setCurrentModel(modelKey) {
+    const allModels = getAllModels();
+    const model = allModels[modelKey];
+    
+    if (!model) return false;
+    
+    currentProvider = model.provider;
+    currentModelKey = modelKey;
+    
+    // Set the model in the appropriate service
+    if (currentProvider === 'gemini') {
+        return geminiService.setModel(modelKey);
+    } else if (currentProvider === 'mistral') {
+        return mistralService.setModel(modelKey);
+    }
+    
+    return false;
+}
+
+function getCurrentModel() {
+    if (currentProvider === 'gemini') {
+        return { ...geminiService.getCurrentModel(), provider: 'gemini' };
+    } else if (currentProvider === 'mistral') {
+        return { ...mistralService.getCurrentModel(), provider: 'mistral' };
+    }
+}
+
+// Route to the correct service based on current provider
+async function identifyCardsFromImage(imageBuffer) {
+    if (currentProvider === 'gemini') {
+        return geminiService.identifyCardsFromImage(imageBuffer);
+    } else if (currentProvider === 'mistral') {
+        return mistralService.identifyCardsFromImage(imageBuffer);
+    }
+    throw new Error('Unknown provider');
+}
+
+// ========== UTILITY FUNCTIONS ==========
 
 /**
  * Formats a card string with a colored emoji for its suit.
@@ -64,7 +134,7 @@ async function runSolverAndReply(chatId, cardString) {
         const numCards = cardCodes.length;
 
         if (numCards < 14 || numCards > 17) {
-            bot.sendMessage(chatId, `❌ *Error:* I found ${numCards} cards, but I can only solve for 14, 15, 16, or 17. Please try a clearer screenshot.`);
+            bot.sendMessage(chatId, `❌ *Error:* I found ${numCards} cards, but I can only solve for 14, 15, 16, or 17. Please try a clearer screenshot.`, { parse_mode: 'Markdown' });
             return;
         }
 
@@ -72,7 +142,7 @@ async function runSolverAndReply(chatId, cardString) {
         const invalidCards = parsedCards.filter(c => c === null);
 
         if (invalidCards.length > 0) {
-            bot.sendMessage(chatId, `❌ *Error:* I couldn't understand some of the cards identified. The model might have made a mistake. Please try again.`);
+            bot.sendMessage(chatId, `❌ *Error:* I couldn't understand some of the cards identified. The model might have made a mistake. Please try again.`, { parse_mode: 'Markdown' });
             return;
         }
 
@@ -113,7 +183,8 @@ async function runSolverAndReply(chatId, cardString) {
     }
 }
 
-// ========== BOT COMMANDS: ==========
+// ========== BOT COMMANDS ==========
+
 // --- /start command ---
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
@@ -122,57 +193,29 @@ bot.onText(/\/start/, (msg) => {
 
 Just send me a screenshot of your cards, and I'll find the optimal arrangement for you.
 
-*Current Vision Model:* ${currentModel.displayName}
+*Current Vision Model:* ${currentModel.displayName} (${currentModel.provider})
+
+*Available Commands:*
+/model - Switch vision model
+/status - View current settings
 `;
     bot.sendMessage(chatId, startMessage, { parse_mode: 'Markdown' });
 });
 
-// --- /lite command (switch to Flash) ---
-bot.onText(/\/lite/, (msg) => {
-    const chatId = msg.chat.id;
-    const success = setModel('lite');
-    
-    if (success) {
-        const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
-    } else {
-        bot.sendMessage(chatId, '❌ Error switching model');
-    }
-});
-// --- /flash command (switch to Flash) ---
-bot.onText(/\/flash/, (msg) => {
-    const chatId = msg.chat.id;
-    const success = setModel('flash');
-    
-    if (success) {
-        const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
-    } else {
-        bot.sendMessage(chatId, '❌ Error switching model');
-    }
-});
-// --- /pro command (switch to Pro) ---
-bot.onText(/\/pro/, (msg) => {
-    const chatId = msg.chat.id;
-    const success = setModel('pro');
-    
-    if (success) {
-        const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
-    } else {
-        bot.sendMessage(chatId, '❌ Error switching model');
-    }
+// --- /solve command (for text input) ---
+bot.onText(/\/solve (.+)/, (msg, match) => {
+    runSolverAndReply(msg.chat.id, match[1]);
 });
 
 // --- /model command (switch models) ---
 bot.onText(/\/model/, (msg) => {
     const chatId = msg.chat.id;
-    const models = getAvailableModels();
+    const allModels = getAllModels();
     const currentModel = getCurrentModel();
     
     const keyboard = {
-        inline_keyboard: Object.keys(models).map(key => [{
-            text: `${models[key].displayName}${key === Object.keys(models).find(k => models[k].name === currentModel.name) ? ' ✓' : ''}`,
+        inline_keyboard: Object.keys(allModels).map(key => [{
+            text: `${allModels[key].displayName} (${allModels[key].provider})${key === currentModelKey ? ' ✓' : ''}`,
             callback_data: `model_${key}`
         }])
     };
@@ -191,12 +234,74 @@ bot.onText(/\/status/, (msg) => {
     const statusMessage = `*Current Bot Settings:*
 
 *Vision Model:* ${currentModel.displayName}
+*Provider:* ${currentModel.provider}
 *Model ID:* \`${currentModel.name}\`
-*Thinking Budget:* ${currentModel.thinkingBudget}
 
 Use /model to switch models.
 `;
     bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
+});
+
+// --- Direct command handlers for Gemini models ---
+bot.onText(/\/flash/, (msg) => {
+    const chatId = msg.chat.id;
+    const success = setCurrentModel('flash');
+    
+    if (success) {
+        const newModel = getCurrentModel();
+        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    } else {
+        bot.sendMessage(chatId, '❌ Error switching model');
+    }
+});
+
+bot.onText(/\/pro/, (msg) => {
+    const chatId = msg.chat.id;
+    const success = setCurrentModel('pro');
+    
+    if (success) {
+        const newModel = getCurrentModel();
+        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    } else {
+        bot.sendMessage(chatId, '❌ Error switching model');
+    }
+});
+
+bot.onText(/\/flashlite/, (msg) => {
+    const chatId = msg.chat.id;
+    const success = setCurrentModel('flash-lite');
+    
+    if (success) {
+        const newModel = getCurrentModel();
+        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    } else {
+        bot.sendMessage(chatId, '❌ Error switching model');
+    }
+});
+
+// --- Direct command handlers for Mistral models ---
+bot.onText(/\/mistralsmall/, (msg) => {
+    const chatId = msg.chat.id;
+    const success = setCurrentModel('mistral-small');
+    
+    if (success) {
+        const newModel = getCurrentModel();
+        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    } else {
+        bot.sendMessage(chatId, '❌ Error switching model');
+    }
+});
+
+bot.onText(/\/mistrallarge/, (msg) => {
+    const chatId = msg.chat.id;
+    const success = setCurrentModel('mistral-large');
+    
+    if (success) {
+        const newModel = getCurrentModel();
+        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    } else {
+        bot.sendMessage(chatId, '❌ Error switching model');
+    }
 });
 
 // --- Handle model selection callbacks ---
@@ -206,12 +311,12 @@ bot.on('callback_query', (query) => {
     
     if (data.startsWith('model_')) {
         const modelKey = data.replace('model_', '');
-        const success = setModel(modelKey);
+        const success = setCurrentModel(modelKey);
         
         if (success) {
             const newModel = getCurrentModel();
             bot.answerCallbackQuery(query.id, { text: `Switched to ${newModel.displayName}` });
-            bot.editMessageText(`✅ *Vision model changed to:* ${newModel.displayName}`, {
+            bot.editMessageText(`✅ *Vision model changed to:* ${newModel.displayName} (${newModel.provider})`, {
                 chat_id: chatId,
                 message_id: query.message.message_id,
                 parse_mode: 'Markdown'
@@ -227,7 +332,7 @@ bot.on('photo', async (msg) => {
     const chatId = msg.chat.id;
 
     try {
-        // Let the user know the bot is working without sending a message
+        // Let the user know the bot is working
         bot.sendChatAction(chatId, 'typing');
 
         // Get the highest resolution photo
@@ -241,16 +346,16 @@ bot.on('photo', async (msg) => {
         }
         const imageBuffer = Buffer.concat(chunks);
 
-        // Call Gemini to identify cards
-        const cardStringFromGemini = await identifyCardsFromImage(imageBuffer);
+        // Call the appropriate vision service to identify cards
+        const cardStringFromVision = await identifyCardsFromImage(imageBuffer);
 
-        if (!cardStringFromGemini) {
+        if (!cardStringFromVision) {
             await bot.sendMessage(chatId, "Sorry, I couldn't extract the cards from that image. Please try a clearer screenshot without any obstructions.");
             return;
         }
 
         // Run the solver with the identified cards and send the final reply
-        await runSolverAndReply(chatId, cardStringFromGemini);
+        await runSolverAndReply(chatId, cardStringFromVision);
 
     } catch (error) {
         console.error("Photo Handler Error:", error);

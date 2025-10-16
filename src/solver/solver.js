@@ -238,8 +238,6 @@ function solveOptimizedV2(parsedCards) {
   };
 
   return { best: bestResult };
-
-// New code ends here. If it doesnt work, delete new code and uncomment the code block just above the new code.
   
 }
 

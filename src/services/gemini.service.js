@@ -8,10 +8,10 @@ const ai = new GoogleGenAI({
 });
 
 const temperature = 0;
-const systemInstruction = `You are analyzing a screenshot of a poker app showing the hero's cards face up in a row. Your job is to extract all cards from the image, one by one, and output them in standard poker notation.
+const systemInstruction = `You are analyzing a screenshot of a poker app showing several playing cards face up in a row. Your job is to identify them and output them in standard poker notation.
 
 STEP 1 - CAREFULLY IDENTIFY EACH CARD:
-List each card, writing out the rank and suit in words.
+From the row of visible playing cards, starting from the first card on the left, list each card writing out the rank and suit in words.
 Format:
 1. [rank], [suit]
 2. [rank], [suit]
@@ -32,21 +32,25 @@ Provide all cards in a single line, separated by single spaces, enclosed in trip
 
 // Model configurations - easy to add new models here
 const MODEL_CONFIGS = {
-    'lite': {
-        name: 'gemini-flash-lite-latest',
-        displayName: 'Gemini Flash Lite',
-        thinkingBudget: -1,
-    },
     'flash': {
+        provider: 'gemini',  
         name: 'gemini-flash-latest',
         displayName: 'Gemini Flash',
         thinkingBudget: -1,
     },
     'pro': {
+        provider: 'gemini', 
         name: 'gemini-2.5-pro',
         displayName: 'Gemini 2.5 Pro',
         thinkingBudget: -1,
     },
+    'flash-lite': {
+        provider: 'gemini', 
+        name: 'gemini-flash-lite-latest',
+        displayName: 'Gemini Flash Lite',
+        thinkingBudget: -1,
+    },
+    // ... any other gemini models
 };
 
 // Default model
