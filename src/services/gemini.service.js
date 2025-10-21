@@ -44,7 +44,7 @@ const MODEL_CONFIGS = {
         displayName: 'Gemini 2.5 Pro',
         thinkingBudget: -1,
     },
-    'flash-lite': {
+    'lite': {
         provider: 'gemini', 
         name: 'gemini-flash-lite-latest',
         displayName: 'Gemini Flash Lite',
