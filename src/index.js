@@ -279,6 +279,17 @@ bot.onText(/\/mistrallarge/, (msg) => {
         bot.sendMessage(chatId, '❌ Error switching model');
     }
 });
+bot.onText(/\/mistralsmall/, (msg) => {
+    const chatId = msg.chat.id;
+    const success = setCurrentModel('mistral-small');
+    
+    if (success) {
+        const newModel = getCurrentModel();
+        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    } else {
+        bot.sendMessage(chatId, '❌ Error switching model');
+    }
+});
 
 // --- Handle model selection callbacks ---
 bot.on('callback_query', (query) => {

@@ -39,11 +39,10 @@ const MODEL_CONFIGS = {
         name: 'mistral-large-latest',
         displayName: 'Mistral Large',
     },
-    // Add new models here in the future:
-    // 'magistral-small': {
-    //     name: 'magistral-small-latest',
-    //     displayName: 'Magistral Small',
-    // },
+    'mistral-small': {
+        name: 'mistral-small-latest',
+        displayName: 'mistral Small',
+    },
 };
 
 // Default model
