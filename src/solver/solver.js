@@ -375,6 +375,7 @@ function getRoyalties(ev, tier) {
   return 0;
 }
 
+// This version of combinations works on an array of items directly
 function* combinations(arr, k) {
     const n = arr.length;
     if (k > n || k < 0) return;
@@ -404,16 +405,6 @@ function areDisjoint(indicesA, indicesB) {
   return true;
 }
 
-// NEW: Bitmask helper to count set bits (number of cards in a subset)
-function popcount(mask) {
-    let count = 0;
-    while (mask > 0) {
-        mask &= (mask - 1);
-        count++;
-    }
-    return count;
-}
-
 function solveOptimizedV2(parsedCards) {
   console.log('🔍 [SOLVER] Starting solver with', parsedCards.length, 'cards');
   const solverStartTime = Date.now();
@@ -435,64 +426,28 @@ function solveOptimizedV2(parsedCards) {
   }
   console.log('✅ [SOLVER] Step 1 complete:', fiveCardHands.length, 'five-card hands generated in', (Date.now() - step1Start), 'ms');
   
-  // ===================================================================
-  // NEW: Step 2: Build Front Hand Cache using Bitmasks
-  // This is the core of the new optimization.
-  // ===================================================================
-  console.log('⏱️  [SOLVER] Step 2: Building Front Hand Cache...');
+  console.log('⏱️  [SOLVER] Step 2: Sorting five-card hands...');
   const step2Start = Date.now();
-  const frontHandCache = new Map();
-  const numSubsets = 1 << numCards; // 2^numCards
-
-  for (let mask = 0; mask < numSubsets; mask++) {
-      const numCardsInSubset = popcount(mask);
-      if (numCardsInSubset < 3) continue;
-
-      const subsetIndices = [];
-      for (let i = 0; i < numCards; i++) {
-          if ((mask >> i) & 1) {
-              subsetIndices.push(i);
-          }
-      }
-
-      let bestFrontForSubset = null;
-      for (const frontIndices of combinations(subsetIndices, 3)) {
-          const hand = frontIndices.map(i => parsedCards[i]);
-          const ev = evalHand(hand);
-          const frontData = { indices: frontIndices, hand, ev, frontRoyalty: getRoyalties(ev, "front") };
-
-          if (!bestFrontForSubset || frontData.frontRoyalty > bestFrontForSubset.frontRoyalty) {
-              bestFrontForSubset = frontData;
-          } else if (frontData.frontRoyalty === bestFrontForSubset.frontRoyalty) {
-              if (compareHands(frontData.ev, bestFrontForSubset.ev) > 0) {
-                  bestFrontForSubset = frontData;
-              }
-          }
-      }
-      if (bestFrontForSubset) {
-          frontHandCache.set(mask, bestFrontForSubset);
-      }
-  }
-  console.log('✅ [SOLVER] Step 2 complete:', frontHandCache.size, 'subsets cached in', (Date.now() - step2Start), 'ms');
-  
-  console.log('⏱️  [SOLVER] Step 3: Sorting five-card hands...');
-  const step3Start = Date.now();
   fiveCardHands.sort((a, b) => compareHands(b.ev, a.ev));
-  console.log('✅ [SOLVER] Step 3 complete: Sorted in', (Date.now() - step3Start), 'ms');
+  console.log('✅ [SOLVER] Step 2 complete: Sorted in', (Date.now() - step2Start), 'ms');
   
   const MAX_FRONT_ROYALTY = 22;
   
-  console.log('⏱️  [SOLVER] Step 4: Main search loop (now with cache)...');
-  const step4Start = Date.now();
+  console.log('⏱️  [SOLVER] Step 3: Main search loop (with memoization)...');
+  const step3Start = Date.now();
   let pairCount = 0;
+  let cacheHits = 0;
   
-  const allCardsMask = (1 << numCards) - 1;
+  // ===================================================================
+  // THE REAL FIX: A "Just-in-Time" cache (Memoization)
+  // ===================================================================
+  const frontHandCache = new Map();
 
   for (let i = 0; i < fiveCardHands.length; i++) {
     const backHand = fiveCardHands[i];
     
     if (i > 0 && i % 500 === 0) {
-      console.log(`   [SOLVER] Progress: ${i}/${fiveCardHands.length} back hands processed`);
+      console.log(`   [SOLVER] Progress: ${i}/${fiveCardHands.length} back hands processed (Cache hits: ${cacheHits})`);
     }
     
     for (let j = i; j < fiveCardHands.length; j++) {
@@ -503,16 +458,35 @@ function solveOptimizedV2(parsedCards) {
       if (backHand.backRoyalty + middleHand.middleRoyalty + MAX_FRONT_ROYALTY < currentBestScore) continue;
       if (!areDisjoint(backHand.indices, middleHand.indices)) continue;
       
-      // ===================================================================
-      // REPLACED: The expensive inner loop is gone.
-      // We now use a single, lightning-fast cache lookup.
-      // ===================================================================
-      let usedMask = 0;
-      for (const index of backHand.indices) { usedMask |= (1 << index); }
-      for (const index of middleHand.indices) { usedMask |= (1 << index); }
+      const usedIndices = new Set([...backHand.indices, ...middleHand.indices]);
+      const remainingIndices = allCardIndices.filter((idx) => !usedIndices.has(idx));
       
-      const remainingMask = allCardsMask ^ usedMask;
-      const bestFrontForPair = frontHandCache.get(remainingMask);
+      // Use a sorted string of remaining indices as the cache key
+      const cacheKey = remainingIndices.join(',');
+
+      let bestFrontForPair = null;
+
+      if (frontHandCache.has(cacheKey)) {
+          bestFrontForPair = frontHandCache.get(cacheKey);
+          cacheHits++;
+      } else {
+          // If not in cache, calculate it the expensive way ONCE
+          for (const frontIndices of combinations(remainingIndices, 3)) {
+              const hand = frontIndices.map(i => parsedCards[i]);
+              const ev = evalHand(hand);
+              const frontData = { indices: frontIndices, hand, ev, frontRoyalty: getRoyalties(ev, "front") };
+
+              if (!bestFrontForPair || frontData.frontRoyalty > bestFrontForPair.frontRoyalty) {
+                  bestFrontForPair = frontData;
+              } else if (frontData.frontRoyalty === bestFrontForPair.frontRoyalty) {
+                  if (compareHands(frontData.ev, bestFrontForPair.ev) > 0) {
+                      bestFrontForPair = frontData;
+                  }
+              }
+          }
+          // Store the result in the cache for next time
+          frontHandCache.set(cacheKey, bestFrontForPair);
+      }
 
       if (bestFrontForPair && compareHands(middleHand.ev, bestFrontForPair.ev) >= 0) {
         const points = backHand.backRoyalty + middleHand.middleRoyalty + bestFrontForPair.frontRoyalty;
@@ -544,7 +518,7 @@ function solveOptimizedV2(parsedCards) {
             const frontComp = compareHands(currentArrangement.frontEv, bestRepeatArrangement.frontEv);
             if (frontComp > 0) {
               bestRepeatArrangement = currentArrangement;
-            } else if (frontComp === 0) {
+            } else if (midComp === 0) {
               const midComp = compareHands(currentArrangement.middleEv, bestRepeatArrangement.middleEv);
               if (midComp > 0) {
                 bestRepeatArrangement = currentArrangement;
@@ -559,15 +533,16 @@ function solveOptimizedV2(parsedCards) {
       }
     }
   }
-  console.log('✅ [SOLVER] Step 4 complete: Evaluated', pairCount, 'back/middle pairs in', (Date.now() - step4Start), 'ms');
+  console.log('✅ [SOLVER] Step 3 complete: Evaluated', pairCount, 'back/middle pairs in', (Date.now() - step3Start), 'ms');
+  console.log('   [SOLVER] Cache stats: Final size', frontHandCache.size, '| Total hits:', cacheHits);
   
   if (!bestOverallArrangement) {
     console.log('❌ [SOLVER] No valid arrangement found!');
     return { best: null };
   }
   
-  console.log('⏱️  [SOLVER] Step 5: Final selection and formatting...');
-  const step5Start = Date.now();
+  console.log('⏱️  [SOLVER] Step 4: Final selection and formatting...');
+  const step4Start = Date.now();
   const overallScore = bestOverallArrangement.points;
   const repeatEVScore = bestRepeatArrangement ? bestRepeatArrangement.points + 8.25 : -1;
   let finalChoice = bestOverallArrangement;
@@ -594,7 +569,7 @@ function solveOptimizedV2(parsedCards) {
     back: sortByRankDesc(finalChoice.backData.hand)
   };
   
-  console.log('✅ [SOLVER] Step 5 complete in', (Date.now() - step5Start), 'ms');
+  console.log('✅ [SOLVER] Step 4 complete in', (Date.now() - step4Start), 'ms');
   console.log('🎉 [SOLVER] TOTAL SOLVER TIME:', (Date.now() - solverStartTime), 'ms');
   console.log('📊 [SOLVER] Best score:', bestResult.finalEV, 'points', isRepeatChoice ? '(Repeat FL)' : '');
 
