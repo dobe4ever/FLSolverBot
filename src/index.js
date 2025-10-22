@@ -7,19 +7,19 @@ const geminiService = require('./services/gemini.service.js');
 const mistralService = require('./services/mistral.service.js');
 
 // ========== NEW CODE START: HTTP Server for Render ==========
-// const express = require('express');
-// const app = express();
+const express = require('express');
+const app = express();
 
-// // Simple health check endpoint to keep Render happy
-// app.get('/', (req, res) => {
-//     res.send('🚀 FL Solver Bot is alive and solving poker hands!');
-// });
+// Simple health check endpoint to keep Render happy
+app.get('/', (req, res) => {
+    res.send('🚀 FL Solver Bot is alive and solving poker hands!');
+});
 
-// // Start the HTTP server on the port Render assigns
-// const PORT = process.env.PORT || 10000;
-// app.listen(PORT, '0.0.0.0', () => {
-//     console.log(`🌐 Health check server running on port ${PORT}`);
-// });
+// Start the HTTP server on the port Render assigns
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🌐 Health check server running on port ${PORT}`);
+});
 // ========== NEW CODE END: HTTP Server for Render ==========
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -211,7 +211,7 @@ bot.onText(/\/solve (.+)/, (msg, match) => {
 bot.onText(/\/model/, (msg) => {
     const chatId = msg.chat.id;
     const allModels = getAllModels();
-    const currentModel = getCurrentModel();
+    // const currentModel = getCurrentModel();
     
     const keyboard = {
         inline_keyboard: Object.keys(allModels).map(key => [{
