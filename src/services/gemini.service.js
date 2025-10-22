@@ -44,17 +44,11 @@ const MODEL_CONFIGS = {
         displayName: 'Gemini 2.5 Pro',
         thinkingBudget: -1,
     },
-    'lite': {
-        provider: 'gemini', 
-        name: 'gemini-flash-lite-latest',
-        displayName: 'Gemini Flash Lite',
-        thinkingBudget: -1,
-    },
     // ... any other gemini models
 };
 
 // Default model
-let currentModelKey = 'flash';
+let currentModelKey = 'pro';
 
 /**
  * Sets the current model to use

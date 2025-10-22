@@ -32,10 +32,6 @@ Provide all cards in a single line, separated by single spaces, enclosed in trip
 
 // Model configurations - easy to add new models here
 const MODEL_CONFIGS = {
-    'mistral-small': {
-        name: 'mistral-small-latest',
-        displayName: 'Mistral Small',
-    },
     'mistral-large': {
         name: 'mistral-large-latest',
         displayName: 'Mistral Large',

@@ -189,15 +189,14 @@ async function runSolverAndReply(chatId, cardString) {
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     const currentModel = getCurrentModel();
-    const startMessage = `Hello! 👋 Welcome to the FL Solver Bot!
+    const startMessage = `Hello! 👋 Just send me a screenshot of your cards, and I'll find the optimal arrangement for you.
 
-Just send me a screenshot of your cards, and I'll find the optimal arrangement for you.
-
-*Current Vision Model:* ${currentModel.displayName} (${currentModel.provider})
-
+*Current Vision Model:* ${currentModel.displayName}
 *Available Commands:*
 /model - Switch vision model
-/status - View current settings
+/pro - Gemini 2.5 Pro
+/flash - Gemini Flash
+/mistrallarge - Mistrall Large
 `;
     bot.sendMessage(chatId, startMessage, { parse_mode: 'Markdown' });
 });
@@ -244,18 +243,6 @@ Use /model to switch models.
 
 // --- Direct command handlers for Gemini models ---
 
-bot.onText(/\/lite/, (msg) => {
-    const chatId = msg.chat.id;
-    const success = setCurrentModel('lite');
-    
-    if (success) {
-        const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
-    } else {
-        bot.sendMessage(chatId, '❌ Error switching model');
-    }
-});
-
 bot.onText(/\/flash/, (msg) => {
     const chatId = msg.chat.id;
     const success = setCurrentModel('flash');
@@ -281,18 +268,6 @@ bot.onText(/\/pro/, (msg) => {
 });
 
 // --- Direct command handlers for Mistral models ---
-bot.onText(/\/mistralsmall/, (msg) => {
-    const chatId = msg.chat.id;
-    const success = setCurrentModel('mistral-small');
-    
-    if (success) {
-        const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
-    } else {
-        bot.sendMessage(chatId, '❌ Error switching model');
-    }
-});
-
 bot.onText(/\/mistrallarge/, (msg) => {
     const chatId = msg.chat.id;
     const success = setCurrentModel('mistral-large');
@@ -340,7 +315,7 @@ bot.on('photo', async (msg) => {
         const photo = msg.photo[msg.photo.length - 1];
         const fileStream = bot.getFileStream(photo.file_id);
         // INFO
-        await bot.sendMessage(chatId, "got image", { parse_mode: 'Markdown' });
+        // await bot.sendMessage(chatId, "got image", { parse_mode: 'Markdown' });
 
         // Download the image into a buffer
         const chunks = [];
@@ -349,19 +324,19 @@ bot.on('photo', async (msg) => {
         }
         const imageBuffer = Buffer.concat(chunks);
         // INFO
-        await bot.sendMessage(chatId, "got base64", { parse_mode: 'Markdown' });
+        // await bot.sendMessage(chatId, "got base64", { parse_mode: 'Markdown' });
 
         // Call the appropriate vision service to identify cards
         const cardStringFromVision = await identifyCardsFromImage(imageBuffer);
         // INFO
-        await bot.sendMessage(chatId, "got model response", { parse_mode: 'Markdown' });
+        // await bot.sendMessage(chatId, "got model response", { parse_mode: 'Markdown' });
 
         if (!cardStringFromVision) {
             await bot.sendMessage(chatId, "Sorry, I couldn't extract the cards from that image. Please try a clearer screenshot without any obstructions.");
             return;
         }
 
-        // ADD THIS LINE - Send the extracted cards immediately
+        // Send the extracted cards immediately
         await bot.sendMessage(chatId, `📋 *Cards identified:*\n\`/solve ${cardStringFromVision}\``, { parse_mode: 'MarkdownV2' });
 
         // Run the solver with the identified cards and send the final reply
