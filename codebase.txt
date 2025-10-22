@@ -1,3 +1,37 @@
+This Telegram bot automatically redeploys to Render.com whenever new code is pushed to the GitHub repo.
+
+Development and testing are done in GitHub Codespaces using the same repo and secrets (except for the Telegram bot token). This allows live testing directly from the browser IDE while interacting with a separate Telegram bot instance in the app.
+
+To run locally:
+`node src/index.js`
+
+# Overview
+
+The bot is a Fantasyland Poker solver that supports all variants (14–17 cards). It processes screenshots from any poker app where the hero is in Fantasyland mode. The image is analyzed using a vision-language model to identify visible cards, which are then passed to the solver for optimal hand arrangement.
+
+**Flow:**
+Screenshot → Telegram API (image) → Base64 → Vision model (cards → text) → Solver → Formatted solution → Telegram API (send reply)
+
+# Files
+
+```
+FLSOLVERBOT
+├── node_modules
+├── src
+│   ├── services
+│   │   ├── gemini.service.js
+│   │   └── mistral.service.js
+│   ├── solver
+│   │   └── solver.js
+│   └── index.js
+├── .gitignore
+├── package-lock.json
+├── package.json
+├── README.md
+└── TODO.md
+```
+# Codebase
+
 ===== FILE: src/services/mistral.service.js =====
 
 ```
@@ -42,11 +76,10 @@ const MODEL_CONFIGS = {
         name: 'mistral-large-latest',
         displayName: 'Mistral Large',
     },
-    // Add new models here in the future:
-    // 'magistral-small': {
-    //     name: 'magistral-small-latest',
-    //     displayName: 'Magistral Small',
-    // },
+    'mistral-small': {
+        name: 'mistral-small-latest',
+        displayName: 'mistral Small',
+    },
 };
 
 // Default model
@@ -860,6 +893,17 @@ bot.onText(/\/pro/, (msg) => {
 bot.onText(/\/mistrallarge/, (msg) => {
     const chatId = msg.chat.id;
     const success = setCurrentModel('mistral-large');
+    
+    if (success) {
+        const newModel = getCurrentModel();
+        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    } else {
+        bot.sendMessage(chatId, '❌ Error switching model');
+    }
+});
+bot.onText(/\/mistralsmall/, (msg) => {
+    const chatId = msg.chat.id;
+    const success = setCurrentModel('mistral-small');
     
     if (success) {
         const newModel = getCurrentModel();
