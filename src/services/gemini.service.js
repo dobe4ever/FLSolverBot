@@ -2,9 +2,16 @@
 
 const { GoogleGenAI } = require("@google/genai");
 
+// Track which API key is active
+let activeKeyIndex = 0;
+const API_KEYS = [
+    process.env.GEMINI_API_KEY,
+    process.env.GEMINI_API_KEY_2
+].filter(Boolean); // Remove undefined keys
+
 // Initialize the Gemini client
-const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
+let ai = new GoogleGenAI({
+    apiKey: API_KEYS[activeKeyIndex],
 });
 
 const temperature = 0;
@@ -29,11 +36,9 @@ CRITICAL:
 
 STEP 3 - OUTPUT:
 Provide all cards in a single line, separated by single spaces, enclosed in triple backticks.
-- Example:
-\`\`\`9C TD 6S QH\`\`\`
-`;
+- Example Format: \`\`\`9C TD 6S QH\`\`\``;
 
-// Model configurations - easy to add new models here
+// Model configurations
 const MODEL_CONFIGS = {
     'pro': {
         provider: 'gemini', 
@@ -41,22 +46,33 @@ const MODEL_CONFIGS = {
         displayName: 'Gemini 2.5 Pro',
         thinkingBudget: -1,
     },
-        'flash': {
+    'flash': {
         provider: 'gemini',  
         name: 'gemini-flash-latest',
         displayName: 'Gemini Flash',
         thinkingBudget: -1,
     },
-    // ... any other gemini models
 };
 
 // Default model
 let currentModelKey = 'pro';
 
 /**
+ * Rotates to the next API key
+ */
+function rotateApiKey() {
+    if (API_KEYS.length < 2) return false;
+    
+    activeKeyIndex = (activeKeyIndex + 1) % API_KEYS.length;
+    ai = new GoogleGenAI({
+        apiKey: API_KEYS[activeKeyIndex],
+    });
+    console.log(`🔄 [GEMINI] Rotated to API key ${activeKeyIndex + 1}`);
+    return true;
+}
+
+/**
  * Sets the current model to use
- * @param {string} modelKey - Key from MODEL_CONFIGS
- * @returns {boolean} - True if model was set successfully
  */
 function setModel(modelKey) {
     if (MODEL_CONFIGS[modelKey]) {
@@ -68,7 +84,6 @@ function setModel(modelKey) {
 
 /**
  * Gets the current model configuration
- * @returns {object} - Current model config
  */
 function getCurrentModel() {
     return MODEL_CONFIGS[currentModelKey];
@@ -76,7 +91,6 @@ function getCurrentModel() {
 
 /**
  * Gets all available models
- * @returns {object} - All model configurations
  */
 function getAvailableModels() {
     return MODEL_CONFIGS;
@@ -84,61 +98,68 @@ function getAvailableModels() {
 
 /**
  * Identifies cards from an image buffer using Gemini Vision.
+ * Throws error with full details for centralized handling.
  * @param {Buffer} imageBuffer The image data as a buffer.
- * @returns {Promise<string|null>} A string of card codes, or null if parsing fails.
+ * @returns {Promise<string>} Raw response text from the model
  */
 async function identifyCardsFromImage(imageBuffer) {
-    try {
-        const modelConfig = MODEL_CONFIGS[currentModelKey];
-        
-        const config = {
-            temperature: temperature,
-            thinkingConfig: {
-                thinkingBudget: modelConfig.thinkingBudget,
-            },
-            systemInstruction: [
-                {
-                    text: systemInstruction,
-                }
-            ],
-        };
-
-        const contents = [
+    const modelConfig = MODEL_CONFIGS[currentModelKey];
+    
+    const config = {
+        temperature: temperature,
+        thinkingConfig: {
+            thinkingBudget: modelConfig.thinkingBudget,
+        },
+        systemInstruction: [
             {
-                role: 'user',
-                parts: [
-                    {
-                        inlineData: {
-                            mimeType: 'image/jpeg',
-                            data: imageBuffer.toString("base64"),
-                        },
-                    },
-                ],
-            },
-        ];
+                text: systemInstruction,
+            }
+        ],
+    };
 
+    const contents = [
+        {
+            role: 'user',
+            parts: [
+                {
+                    inlineData: {
+                        mimeType: 'image/jpeg',
+                        data: imageBuffer.toString("base64"),
+                    },
+                },
+            ],
+        },
+    ];
+
+    try {
         const response = await ai.models.generateContent({
             model: modelConfig.name,
             config,
             contents,
         });
 
-        const responseText = response.text;
-
-        // Extract the content from between the triple backticks
-        const match = responseText.match(/\`\`\`([\s\S]*?)\`\`\`/);
-
-        if (match && match[1]) {
-            // Return the cleaned, trimmed string of cards
-            return match[1].trim();
-        } else {
-            console.error("Gemini response did not contain the expected format:", responseText);
-            return null;
-        }
+        return response.text;
 
     } catch (error) {
-        console.error("Error calling Gemini API:", error);
-        throw new Error("Failed to get a valid response from the vision model.");
+        // Check if it's a quota/rate limit error
+        if (error.status === 'RESOURCE_EXHAUSTED' || 
+            (error.message && error.message.includes('quota'))) {
+            
+            // Try rotating API key automatically
+            if (rotateApiKey()) {
+                console.log('🔄 [GEMINI] Retrying with new API key...');
+                // Retry with new key
+                const response = await ai.models.generateContent({
+                    model: modelConfig.name,
+                    config,
+                    contents,
+                });
+                return response.text;
+            }
+        }
+        
+        // Re-throw error with full details for centralized handling
+        throw error;
     }
 }
 

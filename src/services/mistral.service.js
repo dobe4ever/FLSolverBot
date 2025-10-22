@@ -29,11 +29,9 @@ CRITICAL:
 
 STEP 3 - OUTPUT:
 Provide all cards in a single line, separated by single spaces, enclosed in triple backticks.
-- Example:
-\`\`\`9C TD 6S QH\`\`\`
-`;
+- Example Format: \`\`\`9C TD 6S QH\`\`\``;
 
-// Model configurations - easy to add new models here
+// Model configurations
 const MODEL_CONFIGS = {
     'mistral-large': {
         name: 'mistral-large-latest',
@@ -41,7 +39,7 @@ const MODEL_CONFIGS = {
     },
     'mistral-small': {
         name: 'mistral-small-latest',
-        displayName: 'mistral Small',
+        displayName: 'Mistral Small',
     },
 };
 
@@ -50,8 +48,6 @@ let currentModelKey = 'mistral-small';
 
 /**
  * Sets the current model to use
- * @param {string} modelKey - Key from MODEL_CONFIGS
- * @returns {boolean} - True if model was set successfully
  */
 function setModel(modelKey) {
     if (MODEL_CONFIGS[modelKey]) {
@@ -63,7 +59,6 @@ function setModel(modelKey) {
 
 /**
  * Gets the current model configuration
- * @returns {object} - Current model config
  */
 function getCurrentModel() {
     return MODEL_CONFIGS[currentModelKey];
@@ -71,7 +66,6 @@ function getCurrentModel() {
 
 /**
  * Gets all available models
- * @returns {object} - All model configurations
  */
 function getAvailableModels() {
     return MODEL_CONFIGS;
@@ -79,54 +73,38 @@ function getAvailableModels() {
 
 /**
  * Identifies cards from an image buffer using Mistral Vision.
+ * Throws error with full details for centralized handling.
  * @param {Buffer} imageBuffer The image data as a buffer.
- * @returns {Promise<string|null>} A string of card codes, or null if parsing fails.
+ * @returns {Promise<string>} Raw response text from the model
  */
 async function identifyCardsFromImage(imageBuffer) {
-    try {
-        const modelConfig = MODEL_CONFIGS[currentModelKey];
-        
-        // Convert buffer to base64
-        const base64Image = imageBuffer.toString('base64');
-        const base64DataUrl = `data:image/jpeg;base64,${base64Image}`;
+    const modelConfig = MODEL_CONFIGS[currentModelKey];
+    
+    // Convert buffer to base64
+    const base64Image = imageBuffer.toString('base64');
+    const base64DataUrl = `data:image/jpeg;base64,${base64Image}`;
 
-        const chatResponse = await client.chat.complete({
-            model: modelConfig.name,
-            temperature: temperature,
-            messages: [
-                {
-                    role: "system",
-                    content: systemInstruction,
-                },
-                {
-                    role: "user",
-                    content: [
-                        {
-                            type: "image_url",
-                            imageUrl: base64DataUrl,
-                        },
-                    ],
-                },
-            ],
-        });
+    const chatResponse = await client.chat.complete({
+        model: modelConfig.name,
+        temperature: temperature,
+        messages: [
+            {
+                role: "system",
+                content: systemInstruction,
+            },
+            {
+                role: "user",
+                content: [
+                    {
+                        type: "image_url",
+                        imageUrl: base64DataUrl,
+                    },
+                ],
+            },
+        ],
+    });
 
-        const responseText = chatResponse.choices[0].message.content;
-
-        // Extract the content from between the triple backticks
-        const match = responseText.match(/\`\`\`([\s\S]*?)\`\`\`/);
-
-        if (match && match[1]) {
-            // Return the cleaned, trimmed string of cards
-            return match[1].trim();
-        } else {
-            console.error("Mistral response did not contain the expected format:", responseText);
-            return null;
-        }
-
-    } catch (error) {
-        console.error("Error calling Mistral API:", error);
-        throw new Error("Failed to get a valid response from the vision model.");
-    }
+    return chatResponse.choices[0].message.content;
 }
 
 module.exports = { 

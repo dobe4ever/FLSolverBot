@@ -1,4 +1,4 @@
-# To do next:
+================= DOING / TESTING =========================
 
 ### Better error handling/displaying:
 
@@ -102,4 +102,10 @@ bot.on('photo', async (msg) => {
 });
 ```
 
-Something like that...?
+Something like that... Makes sense? Let me know if I'm missing anything or what if any specific info you might need, and when we're on the same page I'll ask u to refactor the necessary files so I can quickly replace all affected files & test the changes.
+
+================= TO DO NEXT =========================
+
+- Go over the index.js function by function, consolidate redundant or unnecessary code
+- Go over the main processing function
+- Fix the /solve command logic

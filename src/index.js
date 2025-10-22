@@ -6,22 +6,20 @@ const { solveOptimizedV2, parseCard } = require('./solver/solver.js');
 const geminiService = require('./services/gemini.service.js');
 const mistralService = require('./services/mistral.service.js');
 
-// ========== NEW CODE START: HTTP Server for Render ==========
+// ========== HTTP Server for Render ==========
 const express = require('express');
 const app = express();
 
-// Simple health check endpoint to keep Render happy
 app.get('/', (req, res) => {
     res.send('🚀 FL Solver Bot is alive and solving poker hands!');
 });
 
-// Start the HTTP server on the port Render assigns
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Health check server running on port ${PORT}`);
 });
-// ========== NEW CODE END: HTTP Server for Render ==========
 
+// ========== Bot Setup ==========
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
 if (!token) {
@@ -39,14 +37,16 @@ if (!process.env.MISTRAL_API_KEY) {
 
 const bot = new TelegramBot(token, { polling: true });
 
+// ========== Retry Context Storage ==========
+// Store image buffers and context for retry functionality
+const retryContexts = new Map();
+
 // ========== MODEL MANAGEMENT ==========
 
-// Create a unified model config by merging both services
 function getAllModels() {
     const geminiModels = geminiService.getAvailableModels();
     const mistralModels = mistralService.getAvailableModels();
     
-    // Add provider field to models
     const geminiWithProvider = {};
     for (const key in geminiModels) {
         geminiWithProvider[key] = {
@@ -66,7 +66,6 @@ function getAllModels() {
     return { ...geminiWithProvider, ...mistralWithProvider };
 }
 
-// Track current provider and model
 let currentProvider = 'gemini';
 let currentModelKey = 'pro';
 
@@ -79,7 +78,6 @@ function setCurrentModel(modelKey) {
     currentProvider = model.provider;
     currentModelKey = modelKey;
     
-    // Set the model in the appropriate service
     if (currentProvider === 'gemini') {
         return geminiService.setModel(modelKey);
     } else if (currentProvider === 'mistral') {
@@ -97,7 +95,6 @@ function getCurrentModel() {
     }
 }
 
-// Route to the correct service based on current provider
 async function identifyCardsFromImage(imageBuffer) {
     if (currentProvider === 'gemini') {
         return geminiService.identifyCardsFromImage(imageBuffer);
@@ -109,11 +106,6 @@ async function identifyCardsFromImage(imageBuffer) {
 
 // ========== UTILITY FUNCTIONS ==========
 
-/**
- * Formats a card string with a colored emoji for its suit.
- * @param {string} cardStr - e.g., "AS", "KH", "TD"
- * @returns {string} - e.g., "A♠️", "K❤️", "T🔷"
- */
 function formatCardWithColor(cardStr) {
     if (!cardStr || cardStr.length < 2) return cardStr;
     const rank = cardStr.slice(0, -1);
@@ -127,38 +119,146 @@ function formatCardWithColor(cardStr) {
     }
 }
 
-// --- Reusable Solver Function ---
-async function runSolverAndReply(chatId, cardString) {
+/**
+ * Extracts cards from triple backticks in model response
+ */
+function extractCardsFromResponse(responseText) {
+    const match = responseText.match(/```([\s\S]*?)```/);
+    if (match && match[1]) {
+        return match[1].trim();
+    }
+    return null;
+}
+
+/**
+ * Extracts error message from API error object
+ */
+function extractErrorMessage(error) {
+    // Mistral errors - extract from Body JSON
+    if (error.message && error.message.includes('Body:')) {
+        try {
+            const bodyMatch = error.message.match(/Body: ({.*})/);
+            if (bodyMatch && bodyMatch[1]) {
+                const bodyObj = JSON.parse(bodyMatch[1]);
+                if (bodyObj.message) {
+                    return bodyObj.message;
+                }
+            }
+        } catch (e) {
+            // Continue to other checks
+        }
+    }
+    
+    // Gemini errors - look for error.message directly or nested in error object
+    if (error.message) {
+        // Check if it's a JSON string with nested error
+        try {
+            const parsed = JSON.parse(error.message);
+            if (parsed.error && parsed.error.message) {
+                return parsed.error.message;
+            }
+        } catch (e) {
+            // Not JSON, check if it's a descriptive message
+            if (!error.message.includes('ApiError') && 
+                !error.message.includes('SDKError') && 
+                !error.message.includes('Status ') &&
+                !error.message.includes('Body:')) {
+                return error.message;
+            }
+        }
+    }
+    
+    // Try error.error.message (nested structure)
+    if (error.error && error.error.message) {
+        return error.error.message;
+    }
+    
+    // Fallback
+    return 'API error occurred';
+}
+
+/**
+ * Creates inline keyboard with retry options
+ */
+function createRetryKeyboard(currentModelKey) {
+    const allModels = getAllModels();
+    const buttons = [];
+    
+    // Add retry with current model
+    buttons.push([{ text: '🔄 Retry', callback_data: 'retry_same' }]);
+    
+    // Add all other models
+    for (const [key, model] of Object.entries(allModels)) {
+        if (key !== currentModelKey) {
+            buttons.push([{
+                text: `${model.displayName} & Retry`,
+                callback_data: `retry_${key}`
+            }]);
+        }
+    }
+    
+    // Add exit button
+    buttons.push([{ text: '❌ Exit', callback_data: 'retry_exit' }]);
+    
+    return { inline_keyboard: buttons };
+}
+
+// ========== MAIN PROCESSING FUNCTION ==========
+
+async function processImage(chatId, imageBuffer, messageId = null) {
     try {
+        bot.sendChatAction(chatId, 'typing');
+        
+        // Call vision API
+        const responseText = await identifyCardsFromImage(imageBuffer);
+        
+        // Extract cards from backticks
+        const cardString = extractCardsFromResponse(responseText);
+        
+        if (!cardString) {
+            // Bad response - model didn't use backticks
+            const currentModel = getCurrentModel();
+            const errorMsg = `❌ ${currentModel.displayName}: Bad response`;
+            
+            const contextId = `${chatId}_${Date.now()}`;
+            retryContexts.set(contextId, { imageBuffer, chatId });
+            
+            const keyboard = createRetryKeyboard(currentModelKey);
+            keyboard.inline_keyboard = keyboard.inline_keyboard.map(row => 
+                row.map(btn => ({
+                    ...btn,
+                    callback_data: `${btn.callback_data}_${contextId}`
+                }))
+            );
+            
+            if (messageId) {
+                await bot.editMessageText(errorMsg, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: keyboard
+                });
+            } else {
+                await bot.sendMessage(chatId, errorMsg, { reply_markup: keyboard });
+            }
+            return;
+        }
+        
+        // Parse cards and run solver - let solver handle validation
         const cardCodes = cardString.trim().split(/\s+/);
-        const numCards = cardCodes.length;
-
-        if (numCards < 14 || numCards > 17) {
-            bot.sendMessage(chatId, `❌ *Error:* I found ${numCards} cards, but I can only solve for 14, 15, 16, or 17. Please try a clearer screenshot.`, { parse_mode: 'Markdown' });
-            return;
-        }
-
         const parsedCards = cardCodes.map(parseCard);
-        const invalidCards = parsedCards.filter(c => c === null);
-
-        if (invalidCards.length > 0) {
-            bot.sendMessage(chatId, `❌ *Error:* I couldn't understand some of the cards identified. The model might have made a mistake. Please try again.`, { parse_mode: 'Markdown' });
-            return;
-        }
-
+        
+        // Run solver
         const startTime = performance.now();
         const { best } = solveOptimizedV2(parsedCards);
         const endTime = performance.now();
         const solveTime = ((endTime - startTime) / 1000).toFixed(3);
 
         if (!best) {
-            bot.sendMessage(chatId, "Couldn't find a valid arrangement. This is unexpected!");
-            return;
+            throw new Error('Solver returned no valid arrangement');
         }
 
-        const repeatText = best.isRepeat ? '✅ (Repeat Fantasyland EV)' : '';
-
-        // Apply the new color formatting to all card arrays
+        // Format result
+        const repeatText = best.isRepeat ? '✅ (Repeat FL)' : '';
         const frontFormatted = best.front.map(formatCardWithColor).join(' ');
         const middleFormatted = best.middle.map(formatCardWithColor).join(' ');
         const backFormatted = best.back.map(formatCardWithColor).join(' ');
@@ -173,44 +273,135 @@ async function runSolverAndReply(chatId, cardString) {
 *Discards:* \`${discardsFormatted}\`
 
 *Score:* ${best.finalEV.toFixed(2)} pts ${repeatText}
-*Time:* ${solveTime} seconds (solver)
-        `;
-        bot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
+*Time:* ${solveTime}s
+`;
+        
+        if (messageId) {
+            await bot.editMessageText(resultMessage, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown'
+            });
+        } else {
+            await bot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
+        }
 
     } catch (error) {
-        console.error("Solver Error:", error);
-        bot.sendMessage(chatId, "An unexpected error occurred while solving. Please check the server logs.");
+        console.error("Processing Error:", error);
+        
+        // Check if it's a solver error (bad card data)
+        const currentModel = getCurrentModel();
+        let errorMessage;
+        
+        if (error.message && (
+            error.message.includes('Solver') || 
+            error.message.includes('at least 13 cards') ||
+            error.message.includes('valid arrangement'))) {
+            errorMessage = 'Bad response';
+        } else {
+            // API error - extract message
+            errorMessage = extractErrorMessage(error);
+        }
+        
+        const errorMsg = `❌ ${currentModel.displayName}: ${errorMessage}`;
+        
+        const contextId = `${chatId}_${Date.now()}`;
+        retryContexts.set(contextId, { imageBuffer, chatId });
+        
+        const keyboard = createRetryKeyboard(currentModelKey);
+        keyboard.inline_keyboard = keyboard.inline_keyboard.map(row => 
+            row.map(btn => ({
+                ...btn,
+                callback_data: `${btn.callback_data}_${contextId}`
+            }))
+        );
+        
+        if (messageId) {
+            await bot.editMessageText(errorMsg, {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: keyboard
+            });
+        } else {
+            await bot.sendMessage(chatId, errorMsg, { reply_markup: keyboard });
+        }
     }
 }
 
 // ========== BOT COMMANDS ==========
 
-// --- /start command ---
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     const currentModel = getCurrentModel();
-    const startMessage = `Hello! 👋 Just send me a screenshot of your cards, and I'll find the optimal arrangement for you.
+    const startMessage = `Hello! 👋 Send me a screenshot of your cards.
 
-*Current Vision Model:* ${currentModel.displayName}
-*Available Commands:*
-/model - Switch vision model
-/pro - Gemini 2.5 Pro
-/flash - Gemini Flash
-/mistrallarge - Mistrall Large
-`;
+*Current Model:* ${currentModel.displayName}
+
+*Commands:*
+/model - Switch model
+/status - View settings`;
     bot.sendMessage(chatId, startMessage, { parse_mode: 'Markdown' });
 });
 
-// --- /solve command (for text input) ---
-bot.onText(/\/solve (.+)/, (msg, match) => {
-    runSolverAndReply(msg.chat.id, match[1]);
+bot.onText(/\/solve (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const cardString = match[1];
+    
+    try {
+        const cardCodes = cardString.trim().split(/\s+/);
+        const numCards = cardCodes.length;
+
+        if (numCards < 14 || numCards > 17) {
+            bot.sendMessage(chatId, `❌ Found ${numCards} cards, need 14-17.`);
+            return;
+        }
+
+        const parsedCards = cardCodes.map(parseCard);
+        const invalidCards = parsedCards.filter(c => c === null);
+
+        if (invalidCards.length > 0) {
+            bot.sendMessage(chatId, `❌ Couldn't parse some cards.`);
+            return;
+        }
+
+        const startTime = performance.now();
+        const { best } = solveOptimizedV2(parsedCards);
+        const endTime = performance.now();
+        const solveTime = ((endTime - startTime) / 1000).toFixed(3);
+
+        if (!best) {
+            bot.sendMessage(chatId, "❌ No valid arrangement found");
+            return;
+        }
+
+        const repeatText = best.isRepeat ? '✅ (Repeat FL)' : '';
+        const frontFormatted = best.front.map(formatCardWithColor).join(' ');
+        const middleFormatted = best.middle.map(formatCardWithColor).join(' ');
+        const backFormatted = best.back.map(formatCardWithColor).join(' ');
+        const discardsFormatted = best.discards.map(formatCardWithColor).join(' ');
+
+        const resultMessage = `*Optimal Arrangement Found!*
+
+\`${frontFormatted}\`
+\`${middleFormatted}\`
+\`${backFormatted}\`
+
+*Discards:* \`${discardsFormatted}\`
+
+*Score:* ${best.finalEV.toFixed(2)} pts ${repeatText}
+*Time:* ${solveTime}s
+`;
+        bot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
+
+    } catch (error) {
+        console.error("Solver Error:", error);
+        bot.sendMessage(chatId, "❌ Solver error occurred");
+    }
 });
 
-// --- /model command (switch models) ---
 bot.onText(/\/model/, (msg) => {
     const chatId = msg.chat.id;
     const allModels = getAllModels();
-    // const currentModel = getCurrentModel();
     
     const keyboard = {
         inline_keyboard: Object.keys(allModels).map(key => [{
@@ -225,23 +416,18 @@ bot.onText(/\/model/, (msg) => {
     });
 });
 
-// --- /status command ---
 bot.onText(/\/status/, (msg) => {
     const chatId = msg.chat.id;
     const currentModel = getCurrentModel();
     
-    const statusMessage = `*Current Bot Settings:*
+    const statusMessage = `*Current Settings:*
 
-*Vision Model:* ${currentModel.displayName}
+*Model:* ${currentModel.displayName}
 *Provider:* ${currentModel.provider}
-*Model ID:* \`${currentModel.name}\`
 
-Use /model to switch models.
-`;
+Use /model to switch.`;
     bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
 });
-
-// --- Direct command handlers for Gemini models ---
 
 bot.onText(/\/flash/, (msg) => {
     const chatId = msg.chat.id;
@@ -249,7 +435,7 @@ bot.onText(/\/flash/, (msg) => {
     
     if (success) {
         const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+        bot.sendMessage(chatId, `✅ Switched to ${newModel.displayName}`, { parse_mode: 'Markdown' });
     } else {
         bot.sendMessage(chatId, '❌ Error switching model');
     }
@@ -261,41 +447,43 @@ bot.onText(/\/pro/, (msg) => {
     
     if (success) {
         const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+        bot.sendMessage(chatId, `✅ Switched to ${newModel.displayName}`, { parse_mode: 'Markdown' });
     } else {
         bot.sendMessage(chatId, '❌ Error switching model');
     }
 });
 
-// --- Direct command handlers for Mistral models ---
 bot.onText(/\/mistrallarge/, (msg) => {
     const chatId = msg.chat.id;
     const success = setCurrentModel('mistral-large');
     
     if (success) {
         const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+        bot.sendMessage(chatId, `✅ Switched to ${newModel.displayName}`, { parse_mode: 'Markdown' });
     } else {
         bot.sendMessage(chatId, '❌ Error switching model');
     }
 });
+
 bot.onText(/\/mistralsmall/, (msg) => {
     const chatId = msg.chat.id;
     const success = setCurrentModel('mistral-small');
     
     if (success) {
         const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ *Vision model changed to:* ${newModel.displayName}`, { parse_mode: 'Markdown' });
+        bot.sendMessage(chatId, `✅ Switched to ${newModel.displayName}`, { parse_mode: 'Markdown' });
     } else {
         bot.sendMessage(chatId, '❌ Error switching model');
     }
 });
 
-// --- Handle model selection callbacks ---
-bot.on('callback_query', (query) => {
+// ========== CALLBACK QUERY HANDLER ==========
+
+bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
     const data = query.data;
     
+    // Handle model selection
     if (data.startsWith('model_')) {
         const modelKey = data.replace('model_', '');
         const success = setCurrentModel(modelKey);
@@ -303,7 +491,7 @@ bot.on('callback_query', (query) => {
         if (success) {
             const newModel = getCurrentModel();
             bot.answerCallbackQuery(query.id, { text: `Switched to ${newModel.displayName}` });
-            bot.editMessageText(`✅ *Vision model changed to:* ${newModel.displayName} (${newModel.provider})`, {
+            bot.editMessageText(`✅ Switched to ${newModel.displayName}`, {
                 chat_id: chatId,
                 message_id: query.message.message_id,
                 parse_mode: 'Markdown'
@@ -311,49 +499,79 @@ bot.on('callback_query', (query) => {
         } else {
             bot.answerCallbackQuery(query.id, { text: 'Error switching model' });
         }
+        return;
+    }
+    
+    // Handle retry actions
+    if (data.startsWith('retry_')) {
+        const parts = data.split('_');
+        const action = parts[1];
+        const contextId = parts.slice(2).join('_');
+        
+        const context = retryContexts.get(contextId);
+        if (!context) {
+            bot.answerCallbackQuery(query.id, { text: 'Session expired, send new screenshot' });
+            return;
+        }
+        
+        if (action === 'exit') {
+            bot.answerCallbackQuery(query.id, { text: 'Cancelled' });
+            bot.editMessageText('❌ Cancelled', {
+                chat_id: chatId,
+                message_id: query.message.message_id
+            });
+            retryContexts.delete(contextId);
+            return;
+        }
+        
+        // Switch model if needed
+        if (action !== 'same') {
+            setCurrentModel(action);
+        }
+        
+        const currentModel = getCurrentModel();
+        bot.answerCallbackQuery(query.id, { text: `Retrying with ${currentModel.displayName}...` });
+        
+        // Update message to show processing
+        bot.editMessageText(`🔄 Retrying with ${currentModel.displayName}...`, {
+            chat_id: chatId,
+            message_id: query.message.message_id
+        });
+        
+        // Process image with retry
+        await processImage(context.chatId, context.imageBuffer, query.message.message_id);
+        
+        // Clean up context
+        retryContexts.delete(contextId);
     }
 });
 
-// --- Photo Handler (for image input) ---
+// ========== PHOTO HANDLER ==========
+
 bot.on('photo', async (msg) => {
     const chatId = msg.chat.id;
 
     try {
-        // Let the user know the bot is working
         bot.sendChatAction(chatId, 'typing');
 
-        // Get the highest resolution photo
         const photo = msg.photo[msg.photo.length - 1];
         const fileStream = bot.getFileStream(photo.file_id);
 
-        // Download the image into a buffer
         const chunks = [];
         for await (const chunk of fileStream) {
             chunks.push(chunk);
         }
         const imageBuffer = Buffer.concat(chunks);
 
-        // Call the appropriate vision service to identify cards
-        const cardStringFromVision = await identifyCardsFromImage(imageBuffer);
-
-        if (!cardStringFromVision) {
-            await bot.sendMessage(chatId, "Sorry, I couldn't extract the cards from that image. Please try a clearer screenshot without any obstructions.");
-            return;
-        }
-
-        // Send the extracted cards immediately
-        // await bot.sendMessage(chatId, `📋 *Cards identified:*\n\`/solve ${cardStringFromVision}\``, { parse_mode: 'MarkdownV2' });
-
-        // Run the solver with the identified cards and send the final reply
-        await runSolverAndReply(chatId, cardStringFromVision);
+        await processImage(chatId, imageBuffer);
 
     } catch (error) {
         console.error("Photo Handler Error:", error);
-        await bot.sendMessage(chatId, "An error occurred while processing your image. Please try again.");
+        await bot.sendMessage(chatId, "❌ Error processing image");
     }
 });
 
-console.log('🚀 FL Solver Bot is running and listening for commands and photos!');
+console.log('🚀 FL Solver Bot is running!');
 
 bot.on('polling_error', (error) => {
     console.error('Polling error:', error.code);
