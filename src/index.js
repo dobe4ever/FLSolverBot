@@ -145,11 +145,16 @@ async function runSolverAndReply(chatId, cardString) {
             bot.sendMessage(chatId, `❌ *Error:* I couldn't understand some of the cards identified. The model might have made a mistake. Please try again.`, { parse_mode: 'Markdown' });
             return;
         }
+        // INFO
+        await bot.sendMessage(chatId, "parsed cards", { parse_mode: 'Markdown' });
 
         const startTime = performance.now();
         const { best } = solveOptimizedV2(parsedCards);
         const endTime = performance.now();
         const solveTime = ((endTime - startTime) / 1000).toFixed(3);
+        // INFO
+        await bot.sendMessage(chatId, "got solution", { parse_mode: 'Markdown' });
+
 
         if (!best) {
             bot.sendMessage(chatId, "Couldn't find a valid arrangement. This is unexpected!");
@@ -175,6 +180,9 @@ async function runSolverAndReply(chatId, cardString) {
 *Score:* ${best.finalEV.toFixed(2)} pts ${repeatText}
 *Time:* ${solveTime} seconds (solver)
         `;
+        // INFO
+        await bot.sendMessage(chatId, "formatted solution", { parse_mode: 'Markdown' });
+
         bot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
 
     } catch (error) {
@@ -315,7 +323,7 @@ bot.on('photo', async (msg) => {
         const photo = msg.photo[msg.photo.length - 1];
         const fileStream = bot.getFileStream(photo.file_id);
         // INFO
-        // await bot.sendMessage(chatId, "got image", { parse_mode: 'Markdown' });
+        await bot.sendMessage(chatId, "got image", { parse_mode: 'Markdown' });
 
         // Download the image into a buffer
         const chunks = [];
@@ -324,12 +332,12 @@ bot.on('photo', async (msg) => {
         }
         const imageBuffer = Buffer.concat(chunks);
         // INFO
-        // await bot.sendMessage(chatId, "got base64", { parse_mode: 'Markdown' });
+        await bot.sendMessage(chatId, "got base64", { parse_mode: 'Markdown' });
 
         // Call the appropriate vision service to identify cards
         const cardStringFromVision = await identifyCardsFromImage(imageBuffer);
         // INFO
-        // await bot.sendMessage(chatId, "got model response", { parse_mode: 'Markdown' });
+        await bot.sendMessage(chatId, "got model response", { parse_mode: 'Markdown' });
 
         if (!cardStringFromVision) {
             await bot.sendMessage(chatId, "Sorry, I couldn't extract the cards from that image. Please try a clearer screenshot without any obstructions.");
