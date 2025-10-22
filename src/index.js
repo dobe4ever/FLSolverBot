@@ -146,7 +146,8 @@ async function runSolverAndReply(chatId, cardString) {
             return;
         }
         // INFO
-        await bot.sendMessage(chatId, "parsed cards", { parse_mode: 'Markdown' });
+        await bot.sendMessage(chatId, "cards parsed", { parse_mode: 'Markdown' });
+        console.log(`cards parsed`);
 
         const startTime = performance.now();
         const { best } = solveOptimizedV2(parsedCards);
@@ -154,6 +155,7 @@ async function runSolverAndReply(chatId, cardString) {
         const solveTime = ((endTime - startTime) / 1000).toFixed(3);
         // INFO
         await bot.sendMessage(chatId, "got solution", { parse_mode: 'Markdown' });
+        console.log(`got solution`);
 
 
         if (!best) {
@@ -181,7 +183,8 @@ async function runSolverAndReply(chatId, cardString) {
 *Time:* ${solveTime} seconds (solver)
         `;
         // INFO
-        await bot.sendMessage(chatId, "formatted solution", { parse_mode: 'Markdown' });
+        await bot.sendMessage(chatId, "solution formatted", { parse_mode: 'Markdown' });
+        console.log(`solution formatted`);
 
         bot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
 
@@ -324,6 +327,7 @@ bot.on('photo', async (msg) => {
         const fileStream = bot.getFileStream(photo.file_id);
         // INFO
         await bot.sendMessage(chatId, "got image", { parse_mode: 'Markdown' });
+        console.log(`got image`);
 
         // Download the image into a buffer
         const chunks = [];
@@ -333,11 +337,13 @@ bot.on('photo', async (msg) => {
         const imageBuffer = Buffer.concat(chunks);
         // INFO
         await bot.sendMessage(chatId, "got base64", { parse_mode: 'Markdown' });
+        console.log(`got base64`);
 
         // Call the appropriate vision service to identify cards
         const cardStringFromVision = await identifyCardsFromImage(imageBuffer);
         // INFO
         await bot.sendMessage(chatId, "got model response", { parse_mode: 'Markdown' });
+        console.log(`got model response`);
 
         if (!cardStringFromVision) {
             await bot.sendMessage(chatId, "Sorry, I couldn't extract the cards from that image. Please try a clearer screenshot without any obstructions.");
