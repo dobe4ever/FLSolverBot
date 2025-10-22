@@ -32,16 +32,16 @@ Provide all cards in a single line, separated by single spaces, enclosed in trip
 
 // Model configurations - easy to add new models here
 const MODEL_CONFIGS = {
-    'flash': {
-        provider: 'gemini',  
-        name: 'gemini-flash-latest',
-        displayName: 'Gemini Flash',
-        thinkingBudget: -1,
-    },
     'pro': {
         provider: 'gemini', 
         name: 'gemini-2.5-pro',
         displayName: 'Gemini 2.5 Pro',
+        thinkingBudget: -1,
+    },
+        'flash': {
+        provider: 'gemini',  
+        name: 'gemini-flash-latest',
+        displayName: 'Gemini Flash',
         thinkingBudget: -1,
     },
     // ... any other gemini models
