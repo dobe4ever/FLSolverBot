@@ -339,6 +339,8 @@ bot.on('photo', async (msg) => {
         // Get the highest resolution photo
         const photo = msg.photo[msg.photo.length - 1];
         const fileStream = bot.getFileStream(photo.file_id);
+        // INFO
+        await bot.sendMessage(chatId, "got image", { parse_mode: 'Markdown' });
 
         // Download the image into a buffer
         const chunks = [];
@@ -346,17 +348,27 @@ bot.on('photo', async (msg) => {
             chunks.push(chunk);
         }
         const imageBuffer = Buffer.concat(chunks);
+        // INFO
+        await bot.sendMessage(chatId, "got base64", { parse_mode: 'Markdown' });
 
         // Call the appropriate vision service to identify cards
         const cardStringFromVision = await identifyCardsFromImage(imageBuffer);
+        // INFO
+        await bot.sendMessage(chatId, "got model response", { parse_mode: 'Markdown' });
 
         if (!cardStringFromVision) {
             await bot.sendMessage(chatId, "Sorry, I couldn't extract the cards from that image. Please try a clearer screenshot without any obstructions.");
             return;
         }
 
+        // ADD THIS LINE - Send the extracted cards immediately
+        await bot.sendMessage(chatId, `📋 *Cards identified:*\n\`\`\`\n${cardStringFromVision}\n\`\`\``, { parse_mode: 'Markdown' });
+
         // Run the solver with the identified cards and send the final reply
         await runSolverAndReply(chatId, cardStringFromVision);
+        // INFO
+        await bot.sendMessage(chatId, "got solution", { parse_mode: 'Markdown' });
+
 
     } catch (error) {
         console.error("Photo Handler Error:", error);
