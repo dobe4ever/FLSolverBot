@@ -362,8 +362,7 @@ bot.on('photo', async (msg) => {
         }
 
         // ADD THIS LINE - Send the extracted cards immediately
-        const messageText = `📋 *Cards identified:*\n\`\`\`\n/solve ${cardStringFromVision}\n\`\`\``;
-        await bot.sendMessage(chatId, messageText, { parse_mode: 'MarkdownV2' });
+        await bot.sendMessage(chatId, `📋 *Cards identified:*\n\`/solve ${cardStringFromVision}\``, { parse_mode: 'MarkdownV2' });
 
         // Run the solver with the identified cards and send the final reply
         // await runSolverAndReply(chatId, cardStringFromVision);
