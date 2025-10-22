@@ -68,7 +68,7 @@ function getAllModels() {
 
 // Track current provider and model
 let currentProvider = 'gemini';
-let currentModelKey = 'flash';
+let currentModelKey = 'pro';
 
 function setCurrentModel(modelKey) {
     const allModels = getAllModels();
@@ -145,18 +145,11 @@ async function runSolverAndReply(chatId, cardString) {
             bot.sendMessage(chatId, `❌ *Error:* I couldn't understand some of the cards identified. The model might have made a mistake. Please try again.`, { parse_mode: 'Markdown' });
             return;
         }
-        // INFO
-        await bot.sendMessage(chatId, "cards parsed", { parse_mode: 'Markdown' });
-        console.log(`cards parsed`);
 
         const startTime = performance.now();
         const { best } = solveOptimizedV2(parsedCards);
         const endTime = performance.now();
         const solveTime = ((endTime - startTime) / 1000).toFixed(3);
-        // INFO
-        await bot.sendMessage(chatId, "got solution", { parse_mode: 'Markdown' });
-        console.log(`got solution`);
-
 
         if (!best) {
             bot.sendMessage(chatId, "Couldn't find a valid arrangement. This is unexpected!");
@@ -182,10 +175,6 @@ async function runSolverAndReply(chatId, cardString) {
 *Score:* ${best.finalEV.toFixed(2)} pts ${repeatText}
 *Time:* ${solveTime} seconds (solver)
         `;
-        // INFO
-        await bot.sendMessage(chatId, "solution formatted", { parse_mode: 'Markdown' });
-        console.log(`solution formatted`);
-
         bot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
 
     } catch (error) {
@@ -325,9 +314,6 @@ bot.on('photo', async (msg) => {
         // Get the highest resolution photo
         const photo = msg.photo[msg.photo.length - 1];
         const fileStream = bot.getFileStream(photo.file_id);
-        // INFO
-        await bot.sendMessage(chatId, "got image", { parse_mode: 'Markdown' });
-        console.log(`got image`);
 
         // Download the image into a buffer
         const chunks = [];
@@ -335,15 +321,9 @@ bot.on('photo', async (msg) => {
             chunks.push(chunk);
         }
         const imageBuffer = Buffer.concat(chunks);
-        // INFO
-        await bot.sendMessage(chatId, "got base64", { parse_mode: 'Markdown' });
-        console.log(`got base64`);
 
         // Call the appropriate vision service to identify cards
         const cardStringFromVision = await identifyCardsFromImage(imageBuffer);
-        // INFO
-        await bot.sendMessage(chatId, "got model response", { parse_mode: 'Markdown' });
-        console.log(`got model response`);
 
         if (!cardStringFromVision) {
             await bot.sendMessage(chatId, "Sorry, I couldn't extract the cards from that image. Please try a clearer screenshot without any obstructions.");
@@ -351,7 +331,7 @@ bot.on('photo', async (msg) => {
         }
 
         // Send the extracted cards immediately
-        await bot.sendMessage(chatId, `📋 *Cards identified:*\n\`/solve ${cardStringFromVision}\``, { parse_mode: 'MarkdownV2' });
+        // await bot.sendMessage(chatId, `📋 *Cards identified:*\n\`/solve ${cardStringFromVision}\``, { parse_mode: 'MarkdownV2' });
 
         // Run the solver with the identified cards and send the final reply
         await runSolverAndReply(chatId, cardStringFromVision);

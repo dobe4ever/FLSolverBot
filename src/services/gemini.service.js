@@ -28,7 +28,10 @@ CRITICAL:
 - Example: TC = Ten of Clubs, 9H = Nine of Hearts, AS = Ace of Spades
 
 STEP 3 - OUTPUT:
-Provide all cards in a single line, separated by single spaces, enclosed in triple backticks.`;
+Provide all cards in a single line, separated by single spaces, enclosed in triple backticks.
+- Example:
+\`\`\`9C TD 6S QH\`\`\`
+`;
 
 // Model configurations - easy to add new models here
 const MODEL_CONFIGS = {
