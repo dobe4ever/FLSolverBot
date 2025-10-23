@@ -375,7 +375,6 @@ function getRoyalties(ev, tier) {
   return 0;
 }
 
-// This version of combinations works on an array of items directly
 function* combinations(arr, k) {
     const n = arr.length;
     if (k > n || k < 0) return;
@@ -412,9 +411,6 @@ function solveOptimizedV2(parsedCards) {
   const numCards = parsedCards.length;
   if (numCards < 13) throw new Error("Solver requires at least 13 cards.");
   
-  let bestOverallArrangement = null;
-  let bestRepeatArrangement = null;
-  
   console.log('⏱️  [SOLVER] Step 1: Generating all 5-card combinations...');
   const step1Start = Date.now();
   const fiveCardHands = [];
@@ -432,99 +428,87 @@ function solveOptimizedV2(parsedCards) {
   console.log('✅ [SOLVER] Step 2 complete: Sorted in', (Date.now() - step2Start), 'ms');
   
   const MAX_FRONT_ROYALTY = 22;
-  
-  console.log('⏱️  [SOLVER] Step 3: Main search loop (with memoization)...');
-  const step3Start = Date.now();
-  let pairCount = 0;
-  let cacheHits = 0;
-  
-  // ===================================================================
-  // THE REAL FIX: A "Just-in-Time" cache (Memoization)
-  // ===================================================================
   const frontHandCache = new Map();
 
-  for (let i = 0; i < fiveCardHands.length; i++) {
-    const backHand = fiveCardHands[i];
-    
-    if (i > 0 && i % 500 === 0) {
-      console.log(`   [SOLVER] Progress: ${i}/${fiveCardHands.length} back hands processed (Cache hits: ${cacheHits})`);
-    }
-    
-    for (let j = i; j < fiveCardHands.length; j++) {
-      pairCount++;
-      const middleHand = fiveCardHands[j];
-      const currentBestScore = bestOverallArrangement?.points ?? -1;
+  const runSearchLoop = (limit, initialBest, initialRepeat) => {
+    let bestOverall = initialBest;
+    let bestRepeat = initialRepeat;
+    let pairCount = 0;
+    let cacheHits = 0;
 
-      if (backHand.backRoyalty + middleHand.middleRoyalty + MAX_FRONT_ROYALTY < currentBestScore) continue;
-      if (!areDisjoint(backHand.indices, middleHand.indices)) continue;
+    const loopLimit = Math.min(limit, fiveCardHands.length);
+
+    for (let i = 0; i < loopLimit; i++) {
+      const backHand = fiveCardHands[i];
       
-      const usedIndices = new Set([...backHand.indices, ...middleHand.indices]);
-      const remainingIndices = allCardIndices.filter((idx) => !usedIndices.has(idx));
-      
-      // Use a sorted string of remaining indices as the cache key
-      const cacheKey = remainingIndices.join(',');
+      for (let j = i; j < loopLimit; j++) {
+        pairCount++;
+        const middleHand = fiveCardHands[j];
+        const currentBestScore = bestOverall?.points ?? -1;
 
-      let bestFrontForPair = null;
-
-      if (frontHandCache.has(cacheKey)) {
-          bestFrontForPair = frontHandCache.get(cacheKey);
-          cacheHits++;
-      } else {
-          // If not in cache, calculate it the expensive way ONCE
-          for (const frontIndices of combinations(remainingIndices, 3)) {
-              const hand = frontIndices.map(i => parsedCards[i]);
-              const ev = evalHand(hand);
-              const frontData = { indices: frontIndices, hand, ev, frontRoyalty: getRoyalties(ev, "front") };
-
-              if (!bestFrontForPair || frontData.frontRoyalty > bestFrontForPair.frontRoyalty) {
-                  bestFrontForPair = frontData;
-              } else if (frontData.frontRoyalty === bestFrontForPair.frontRoyalty) {
-                  if (compareHands(frontData.ev, bestFrontForPair.ev) > 0) {
-                      bestFrontForPair = frontData;
-                  }
-              }
-          }
-          // Store the result in the cache for next time
-          frontHandCache.set(cacheKey, bestFrontForPair);
-      }
-
-      if (bestFrontForPair && compareHands(middleHand.ev, bestFrontForPair.ev) >= 0) {
-        const points = backHand.backRoyalty + middleHand.middleRoyalty + bestFrontForPair.frontRoyalty;
-        const currentArrangement = { points, backEv: backHand.ev, middleEv: middleHand.ev, frontEv: bestFrontForPair.ev, backData: backHand, middleData: middleHand, frontData: bestFrontForPair };
+        if (backHand.backRoyalty + middleHand.middleRoyalty + MAX_FRONT_ROYALTY < currentBestScore) continue;
+        if (!areDisjoint(backHand.indices, middleHand.indices)) continue;
         
-        if (!bestOverallArrangement || points > bestOverallArrangement.points) {
-          bestOverallArrangement = currentArrangement;
-        } else if (points === bestOverallArrangement.points) {
-          const frontComp = compareHands(currentArrangement.frontEv, bestOverallArrangement.frontEv);
-          if (frontComp > 0) {
-            bestOverallArrangement = currentArrangement;
-          } else if (frontComp === 0) {
-            const midComp = compareHands(currentArrangement.middleEv, bestOverallArrangement.middleEv);
-            if (midComp > 0) {
-              bestOverallArrangement = currentArrangement;
-            } else if (midComp === 0) {
-              if (compareHands(currentArrangement.backEv, bestOverallArrangement.backEv) > 0) {
-                bestOverallArrangement = currentArrangement;
+        const usedIndices = new Set([...backHand.indices, ...middleHand.indices]);
+        const remainingIndices = allCardIndices.filter((idx) => !usedIndices.has(idx));
+        const cacheKey = remainingIndices.join(',');
+
+        let bestFrontForPair = null;
+        if (frontHandCache.has(cacheKey)) {
+            bestFrontForPair = frontHandCache.get(cacheKey);
+            cacheHits++;
+        } else {
+            for (const frontIndices of combinations(remainingIndices, 3)) {
+                const hand = frontIndices.map(idx => parsedCards[idx]);
+                const ev = evalHand(hand);
+                const frontData = { indices: frontIndices, hand, ev, frontRoyalty: getRoyalties(ev, "front") };
+                if (!bestFrontForPair || frontData.frontRoyalty > bestFrontForPair.frontRoyalty || (frontData.frontRoyalty === bestFrontForPair.frontRoyalty && compareHands(frontData.ev, bestFrontForPair.ev) > 0)) {
+                    bestFrontForPair = frontData;
+                }
+            }
+            frontHandCache.set(cacheKey, bestFrontForPair);
+        }
+
+        if (bestFrontForPair && compareHands(middleHand.ev, bestFrontForPair.ev) >= 0) {
+          const points = backHand.backRoyalty + middleHand.middleRoyalty + bestFrontForPair.frontRoyalty;
+          const currentArrangement = { points, backEv: backHand.ev, middleEv: middleHand.ev, frontEv: bestFrontForPair.ev, backData: backHand, middleData: middleHand, frontData: bestFrontForPair };
+          
+          // --- CORRECTED TIE-BREAKING LOGIC (Overall) ---
+          if (!bestOverall || points > bestOverall.points) {
+            bestOverall = currentArrangement;
+          } else if (points === bestOverall.points) {
+            const frontComp = compareHands(currentArrangement.frontEv, bestOverall.frontEv);
+            if (frontComp > 0) {
+              bestOverall = currentArrangement;
+            } else if (frontComp === 0) {
+              const midComp = compareHands(currentArrangement.middleEv, bestOverall.middleEv);
+              if (midComp > 0) {
+                bestOverall = currentArrangement;
+              } else if (midComp === 0) {
+                if (compareHands(currentArrangement.backEv, bestOverall.backEv) > 0) {
+                  bestOverall = currentArrangement;
+                }
               }
             }
           }
-        }
-        
-        const isRepeat = isRepeatFantasyland(backHand.ev, middleHand.ev, bestFrontForPair.ev);
-        if (isRepeat) {
-          if (!bestRepeatArrangement || points > bestRepeatArrangement.points) {
-            bestRepeatArrangement = currentArrangement;
-          } else if (points === bestRepeatArrangement.points) {
-            const frontComp = compareHands(currentArrangement.frontEv, bestRepeatArrangement.frontEv);
-            if (frontComp > 0) {
-              bestRepeatArrangement = currentArrangement;
-            } else if (midComp === 0) {
-              const midComp = compareHands(currentArrangement.middleEv, bestRepeatArrangement.middleEv);
-              if (midComp > 0) {
-                bestRepeatArrangement = currentArrangement;
-              } else if (midComp === 0) {
-                if (compareHands(currentArrangement.backEv, bestRepeatArrangement.backEv) > 0) {
-                  bestRepeatArrangement = currentArrangement;
+          
+          const isRepeat = isRepeatFantasyland(backHand.ev, middleHand.ev, bestFrontForPair.ev);
+          if (isRepeat) {
+            // --- CORRECTED TIE-BREAKING LOGIC (Repeat) ---
+            if (!bestRepeat || points > bestRepeat.points) {
+              bestRepeat = currentArrangement;
+            } else if (points === bestRepeat.points) {
+              const frontComp = compareHands(currentArrangement.frontEv, bestRepeat.frontEv);
+              if (frontComp > 0) {
+                bestRepeat = currentArrangement;
+              } else if (frontComp === 0) { // This was the line with the bug
+                const midComp = compareHands(currentArrangement.middleEv, bestRepeat.middleEv);
+                if (midComp > 0) {
+                  bestRepeat = currentArrangement;
+                } else if (midComp === 0) {
+                  if (compareHands(currentArrangement.backEv, bestRepeat.backEv) > 0) {
+                    bestRepeat = currentArrangement;
+                  }
                 }
               }
             }
@@ -532,17 +516,32 @@ function solveOptimizedV2(parsedCards) {
         }
       }
     }
-  }
-  console.log('✅ [SOLVER] Step 3 complete: Evaluated', pairCount, 'back/middle pairs in', (Date.now() - step3Start), 'ms');
-  console.log('   [SOLVER] Cache stats: Final size', frontHandCache.size, '| Total hits:', cacheHits);
-  
+    return { bestOverall, bestRepeat, pairCount, cacheHits };
+  };
+
+  console.log('⏱️  [SOLVER] Step 3: Running Quick Pass for score seeding...');
+  const step3Start = Date.now();
+  const QUICK_PASS_LIMIT = numCards <= 15 ? 250 : 350;
+  const quickPassResult = runSearchLoop(QUICK_PASS_LIMIT, null, null);
+  const seedScore = quickPassResult.bestOverall?.points ?? -1;
+  console.log(`✅ [SOLVER] Step 3 complete in ${(Date.now() - step3Start)} ms. Seed score: ${seedScore}. Pairs: ${quickPassResult.pairCount}`);
+
+  console.log('⏱️  [SOLVER] Step 4: Running Full Search with pruning...');
+  const step4Start = Date.now();
+  const fullSearchResult = runSearchLoop(fiveCardHands.length, quickPassResult.bestOverall, quickPassResult.bestRepeat);
+  console.log(`✅ [SOLVER] Step 4 complete in ${(Date.now() - step4Start)} ms. Pairs: ${fullSearchResult.pairCount}`);
+  console.log('   [SOLVER] Cache stats: Final size', frontHandCache.size, '| Total hits:', fullSearchResult.cacheHits);
+
+  const bestOverallArrangement = fullSearchResult.bestOverall;
+  const bestRepeatArrangement = fullSearchResult.bestRepeat;
+
   if (!bestOverallArrangement) {
     console.log('❌ [SOLVER] No valid arrangement found!');
     return { best: null };
   }
   
-  console.log('⏱️  [SOLVER] Step 4: Final selection and formatting...');
-  const step4Start = Date.now();
+  console.log('⏱️  [SOLVER] Step 5: Final selection and formatting...');
+  const step5Start = Date.now();
   const overallScore = bestOverallArrangement.points;
   const repeatEVScore = bestRepeatArrangement ? bestRepeatArrangement.points + 8.25 : -1;
   let finalChoice = bestOverallArrangement;
@@ -569,7 +568,7 @@ function solveOptimizedV2(parsedCards) {
     back: sortByRankDesc(finalChoice.backData.hand)
   };
   
-  console.log('✅ [SOLVER] Step 4 complete in', (Date.now() - step4Start), 'ms');
+  console.log('✅ [SOLVER] Step 5 complete in', (Date.now() - step5Start), 'ms');
   console.log('🎉 [SOLVER] TOTAL SOLVER TIME:', (Date.now() - solverStartTime), 'ms');
   console.log('📊 [SOLVER] Best score:', bestResult.finalEV, 'points', isRepeatChoice ? '(Repeat FL)' : '');
 
