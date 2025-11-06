@@ -12,7 +12,7 @@ To run locally:
 
 # Overview
 
-The bot is a Fantasyland Poker solver that supports all variants (14–17 cards). It processes screenshots from any poker app where the hero is in Fantasyland mode. The image is analyzed using a vision-language model to identify visible cards, which are then passed to the solver for optimal hand arrangement.
+The bot is a Fantasyland Poker solver that supports all variants (14–17 cards). It processes screenshots from any poker app where the hero is in Fantasyland mode. The image is analyzed using a vision-language model to extract the visible cards from the image, which are then passed to the solver function for optimal hand arrangement.
 
 **Flow:**
 Screenshot → Telegram API (image) → Base64 → Vision model (cards → text) → Solver → Formatted solution → Telegram API (send reply)
