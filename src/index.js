@@ -585,13 +585,13 @@ bot.on('document', async (msg) => {
     try {
         bot.sendChatAction(chatId, 'typing');
 
-        const fileStream = bot.getFileStream(document.file_id);
-
-        const chunks = [];
-        for await (const chunk of fileStream) {
-            chunks.push(chunk);
-        }
-        const imageBuffer = Buffer.concat(chunks);
+        // Download file directly instead of streaming
+        const filePath = await bot.downloadFile(document.file_id, './');
+        const fs = require('fs');
+        const imageBuffer = fs.readFileSync(filePath);
+        
+        // Clean up the downloaded file
+        fs.unlinkSync(filePath);
 
         await processImage(chatId, imageBuffer);
 
