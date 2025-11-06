@@ -7,17 +7,17 @@ const geminiService = require('./services/gemini.service.js');
 const mistralService = require('./services/mistral.service.js');
 
 // ========== HTTP Server for Render ==========
-const express = require('express');
-const app = express();
+// const express = require('express');
+// const app = express();
 
-app.get('/', (req, res) => {
-    res.send('🚀 FL Solver Bot is alive and solving poker hands!');
-});
+// app.get('/', (req, res) => {
+//     res.send('🚀 FL Solver Bot is alive and solving poker hands!');
+// });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🌐 Health check server running on port ${PORT}`);
-});
+// const PORT = process.env.PORT || 10000;
+// app.listen(PORT, '0.0.0.0', () => {
+//     console.log(`🌐 Health check server running on port ${PORT}`);
+// });
 
 // ========== Bot Setup ==========
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -546,30 +546,30 @@ bot.on('callback_query', async (query) => {
     }
 });
 
-// ========== PHOTO HANDLER ==========
+// ========== PHOTO HANDLER (commented while testing only for uncompressed images) ==========
 
-bot.on('photo', async (msg) => {
-    const chatId = msg.chat.id;
-    const photo = msg.photo[msg.photo.length - 1];
+// bot.on('photo', async (msg) => {
+//     const chatId = msg.chat.id;
+//     const photo = msg.photo[msg.photo.length - 1];
 
-    try {
-        bot.sendChatAction(chatId, 'typing');
+//     try {
+//         bot.sendChatAction(chatId, 'typing');
         
-        const fileStream = bot.getFileStream(photo.file_id);
+//         const fileStream = bot.getFileStream(photo.file_id);
 
-        const chunks = [];
-        for await (const chunk of fileStream) {
-            chunks.push(chunk);
-        }
-        const imageBuffer = Buffer.concat(chunks);
+//         const chunks = [];
+//         for await (const chunk of fileStream) {
+//             chunks.push(chunk);
+//         }
+//         const imageBuffer = Buffer.concat(chunks);
 
-        await processImage(chatId, imageBuffer);
+//         await processImage(chatId, imageBuffer);
 
-    } catch (error) {
-        console.error("Photo Handler Error:", error);
-        await bot.sendMessage(chatId, "❌ Error processing image");
-    }
-});
+//     } catch (error) {
+//         console.error("Photo Handler Error:", error);
+//         await bot.sendMessage(chatId, "❌ Error processing image");
+//     }
+// });
 
 // ========== DOCUMENT HANDLER (for uncompressed images) ==========
 
