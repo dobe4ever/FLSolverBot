@@ -6,19 +6,6 @@ const { solveOptimizedV2, parseCard } = require('./solver/solver.js');
 const geminiService = require('./services/gemini.service.js');
 const mistralService = require('./services/mistral.service.js');
 
-// ========== HTTP Server for Render (commented while testing deployment on railway.com instead of render) ==========
-// const express = require('express');
-// const app = express();
-
-// app.get('/', (req, res) => {
-//     res.send('🚀 FL Solver Bot is alive and solving poker hands!');
-// });
-
-// const PORT = process.env.PORT || 10000;
-// app.listen(PORT, '0.0.0.0', () => {
-//     console.log(`🌐 Health check server running on port ${PORT}`);
-// });
-
 // ========== Bot Setup ==========
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -546,112 +533,27 @@ bot.on('callback_query', async (query) => {
     }
 });
 
-// // ========== PHOTO HANDLER (compressed images) ==========
+// ========== PHOTO HANDLER ==========
 
-// bot.on('photo', async (msg) => {
-//     const chatId = msg.chat.id;
-
-//     try {
-//         bot.sendChatAction(chatId, 'typing');
-
-//         const photo = msg.photo[msg.photo.length - 1];
-        
-//         // Get file info from Telegram
-//         const file = await bot.getFile(photo.file_id);
-//         const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
-        
-//         // Fetch the file directly via HTTP
-//         const response = await fetch(fileUrl);
-//         const arrayBuffer = await response.arrayBuffer();
-//         const imageBuffer = Buffer.from(arrayBuffer);
-
-//         await processImage(chatId, imageBuffer);
-
-//     } catch (error) {
-//         console.error("Photo Handler Error:", error);
-//         await bot.sendMessage(chatId, "❌ Error processing image");
-//     }
-// });
-
-// // ========== DOCUMENT HANDLER (uncompressed images) ==========
-
-// bot.on('document', async (msg) => {
-//     const chatId = msg.chat.id;
-//     const document = msg.document;
-
-//     // Only process image documents
-//     if (!document.mime_type || !document.mime_type.startsWith('image/')) {
-//         return;
-//     }
-
-//     try {
-//         bot.sendChatAction(chatId, 'typing');
-
-//         // Get file info from Telegram
-//         const file = await bot.getFile(document.file_id);
-//         const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
-        
-//         // Fetch the file directly via HTTP
-//         const response = await fetch(fileUrl);
-//         const arrayBuffer = await response.arrayBuffer();
-//         const imageBuffer = Buffer.from(arrayBuffer);
-
-//         await processImage(chatId, imageBuffer);
-
-//     } catch (error) {
-//         console.error("Document Handler Error:", error);
-//         await bot.sendMessage(chatId, "❌ Error processing image");
-//     }
-// });
-
-// ========== UNIFIED IMAGE HANDLER ==========
-
-bot.on('message', async (msg) => {
+bot.on('photo', async (msg) => {
     const chatId = msg.chat.id;
-    
-    // Skip if it's a command or text-only message
-    if (msg.text || !msg.photo && !msg.document) return;
-    
-    console.log('📨 [IMAGE] Received message type:', msg.photo ? 'PHOTO' : 'DOCUMENT');
-    
-    let fileId;
-    let mimeType;
-    
-    if (msg.photo) {
-        // Compressed image
-        fileId = msg.photo[msg.photo.length - 1].file_id;
-        mimeType = 'image/jpeg';
-        console.log('📸 [IMAGE] Processing compressed photo');
-    } else if (msg.document) {
-        // Check if it's an image document
-        if (!msg.document.mime_type || !msg.document.mime_type.startsWith('image/')) {
-            console.log('📄 [IMAGE] Skipping non-image document');
-            return;
-        }
-        fileId = msg.document.file_id;
-        mimeType = msg.document.mime_type;
-        console.log('🖼️  [IMAGE] Processing uncompressed image');
-    } else {
-        return;
-    }
 
     try {
         bot.sendChatAction(chatId, 'typing');
-        
-        console.log('⬇️  [IMAGE] Downloading file...');
-        const file = await bot.getFile(fileId);
-        const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
-        
-        const response = await fetch(fileUrl);
-        const arrayBuffer = await response.arrayBuffer();
-        const imageBuffer = Buffer.from(arrayBuffer);
-        
-        console.log('✅ [IMAGE] Downloaded', imageBuffer.length, 'bytes');
+
+        const photo = msg.photo[msg.photo.length - 1];
+        const fileStream = bot.getFileStream(photo.file_id);
+
+        const chunks = [];
+        for await (const chunk of fileStream) {
+            chunks.push(chunk);
+        }
+        const imageBuffer = Buffer.concat(chunks);
 
         await processImage(chatId, imageBuffer);
 
     } catch (error) {
-        console.error("❌ [IMAGE] Handler Error:", error);
+        console.error("Photo Handler Error:", error);
         await bot.sendMessage(chatId, "❌ Error processing image");
     }
 });
