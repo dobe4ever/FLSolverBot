@@ -578,9 +578,9 @@ bot.on('document', async (msg) => {
     const document = msg.document;
 
     // Only process image documents
-    if (!document.mime_type || !document.mime_type.startsWith('image/')) {
-        return; // Ignore non-image documents
-    }
+    // if (!document.mime_type || !document.mime_type.startsWith('image/')) {
+    //     return; // Ignore non-image documents
+    // }
 
     try {
         bot.sendChatAction(chatId, 'typing');
