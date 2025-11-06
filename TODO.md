@@ -1,7 +1,6 @@
 ================= DOING / TESTING =========================
 
 - Now depolying to railway.com instedad of render (fixed speed issue during solver function)
-- Removed the 'port 1000' thing that was needed for render
 
 ================= TO DO NEXT =========================
 

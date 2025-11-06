@@ -550,11 +550,11 @@ bot.on('callback_query', async (query) => {
 
 bot.on('photo', async (msg) => {
     const chatId = msg.chat.id;
+    const photo = msg.photo[msg.photo.length - 1];
 
     try {
         bot.sendChatAction(chatId, 'typing');
-
-        const photo = msg.photo[msg.photo.length - 1];
+        
         const fileStream = bot.getFileStream(photo.file_id);
 
         const chunks = [];
