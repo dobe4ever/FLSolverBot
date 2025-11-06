@@ -571,6 +571,36 @@ bot.on('photo', async (msg) => {
     }
 });
 
+// ========== DOCUMENT HANDLER (for uncompressed images) ==========
+
+bot.on('document', async (msg) => {
+    const chatId = msg.chat.id;
+    const document = msg.document;
+
+    // Only process image documents
+    if (!document.mime_type || !document.mime_type.startsWith('image/')) {
+        return; // Ignore non-image documents
+    }
+
+    try {
+        bot.sendChatAction(chatId, 'typing');
+
+        const fileStream = bot.getFileStream(document.file_id);
+
+        const chunks = [];
+        for await (const chunk of fileStream) {
+            chunks.push(chunk);
+        }
+        const imageBuffer = Buffer.concat(chunks);
+
+        await processImage(chatId, imageBuffer);
+
+    } catch (error) {
+        console.error("Document Handler Error:", error);
+        await bot.sendMessage(chatId, "❌ Error processing image");
+    }
+});
+
 console.log('🚀 FL Solver Bot is running!');
 
 bot.on('polling_error', (error) => {
