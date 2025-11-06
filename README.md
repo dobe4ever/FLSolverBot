@@ -3,9 +3,9 @@ COMMAND TO DUMP CODEBASE INTO codebase.txt
 > codebase.txt && find src -type f -exec sh -c 'echo "===== FILE: {} =====" >> codebase.txt; echo "\n\`\`\`" >> codebase.txt; cat "{}" >> codebase.txt; echo "\n\`\`\`\n" >> codebase.txt;' \;
 ```
 
-This Telegram bot automatically redeploys to Render.com whenever new code is pushed to the GitHub repo.
+This Telegram bot is deployed to railway.com
 
-Development and testing are done in GitHub Codespaces using the same repo and secrets (except for the Telegram bot token). This allows live testing directly from the browser IDE while interacting with a separate Telegram bot instance in the app.
+Development and testing are done on GitHub Codespaces (vs code browser) using the same repo that railway uses. Only the Telegram bot token secret is different on the codespace vs the railway project, this allows live testing from codespces before deploying while interacting with a separate Telegram bot instance in the app.
 
 To run locally:
 `node src/index.js`
@@ -35,4 +35,3 @@ FLSOLVERBOT
 ├── README.md
 └── TODO.md
 ```
-# Codebase
