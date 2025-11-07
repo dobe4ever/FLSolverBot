@@ -5,7 +5,7 @@ COMMAND TO DUMP CODEBASE INTO codebase.txt
 
 This Telegram bot is deployed to railway.com
 
-Development and testing are done on GitHub Codespaces (vs code browser) using the same repo that railway uses. Only the Telegram bot token secret is different on the codespace vs the railway project, this allows live testing from codespces before deploying while interacting with a separate Telegram bot instance in the app.
+Development is done on Codespaces (vs code browser). Railway uses the same github repo for deployment when pushing changes. The bot is tested directly inside telegram & the logs can be checked on railway.
 
 To run locally:
 `node src/index.js`
