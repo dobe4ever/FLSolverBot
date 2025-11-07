@@ -6,19 +6,6 @@ const { solveOptimizedV2, parseCard } = require('./solver/solver.js');
 const geminiService = require('./services/gemini.service.js');
 const mistralService = require('./services/mistral.service.js');
 
-// ========== HTTP Server for Railway/Render ==========
-// const express = require('express');
-// const app = express();
-
-// app.get('/', (req, res) => {
-//     res.send('🚀 FL Solver Bot is alive and solving poker hands!');
-// });
-
-// const PORT = process.env.PORT || 10000;
-// app.listen(PORT, '0.0.0.0', () => {
-//     console.log(`🌐 Health check server running on port ${PORT}`);
-// });
-
 // ========== Bot Setup ==========
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
