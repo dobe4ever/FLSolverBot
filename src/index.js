@@ -417,11 +417,11 @@ bot.on('callback_query', async (query) => {
 
 bot.on('photo', async (msg) => {
     const chatId = msg.chat.id;
-    const instructionMessage = `⚠️ *Image was compressed!*
+    const instructionMessage = `⚠️ *Please resend sceenshot!*
 
-*Please resend and UNCHECK "Compress the image"* (shown above)
+*UNCHECK "Compress the image"* (shown above)
 
-Required for accurate card detection. 🙏`;
+Ensures accurate card detection! 🙏`;
 
     await bot.sendPhoto(chatId, 'https://i.ibb.co/Txb5PpMs/1info.png', {
         caption: instructionMessage,
