@@ -6,7 +6,7 @@ const { solveOptimizedV2, parseCard } = require('./solver/solver.js');
 const geminiService = require('./services/gemini.service.js');
 const mistralService = require('./services/mistral.service.js');
 
-// ========== HTTP Server for Render ==========
+// ========== HTTP Server for Railway/Render ==========
 // const express = require('express');
 // const app = express();
 
@@ -38,7 +38,6 @@ if (!process.env.MISTRAL_API_KEY) {
 const bot = new TelegramBot(token, { polling: true });
 
 // ========== Retry Context Storage ==========
-// Store image buffers and context for retry functionality
 const retryContexts = new Map();
 
 // ========== MODEL MANAGEMENT ==========
@@ -119,9 +118,6 @@ function formatCardWithColor(cardStr) {
     }
 }
 
-/**
- * Extracts cards from triple backticks in model response
- */
 function extractCardsFromResponse(responseText) {
     const match = responseText.match(/```([\s\S]*?)```/);
     if (match && match[1]) {
@@ -130,76 +126,39 @@ function extractCardsFromResponse(responseText) {
     return null;
 }
 
-/**
- * Extracts error message from API error object
- */
 function extractErrorMessage(error) {
-    // Mistral errors - extract from Body JSON
     if (error.message && error.message.includes('Body:')) {
         try {
             const bodyMatch = error.message.match(/Body: ({.*})/);
             if (bodyMatch && bodyMatch[1]) {
                 const bodyObj = JSON.parse(bodyMatch[1]);
-                if (bodyObj.message) {
-                    return bodyObj.message;
-                }
+                if (bodyObj.message) return bodyObj.message;
             }
-        } catch (e) {
-            // Continue to other checks
-        }
+        } catch (e) {}
     }
-    
-    // Gemini errors - look for error.message directly or nested in error object
     if (error.message) {
-        // Check if it's a JSON string with nested error
         try {
             const parsed = JSON.parse(error.message);
-            if (parsed.error && parsed.error.message) {
-                return parsed.error.message;
-            }
+            if (parsed.error && parsed.error.message) return parsed.error.message;
         } catch (e) {
-            // Not JSON, check if it's a descriptive message
-            if (!error.message.includes('ApiError') && 
-                !error.message.includes('SDKError') && 
-                !error.message.includes('Status ') &&
-                !error.message.includes('Body:')) {
+            if (!error.message.includes('ApiError') && !error.message.includes('SDKError') && !error.message.includes('Status ') && !error.message.includes('Body:')) {
                 return error.message;
             }
         }
     }
-    
-    // Try error.error.message (nested structure)
-    if (error.error && error.error.message) {
-        return error.error.message;
-    }
-    
-    // Fallback
+    if (error.error && error.error.message) return error.error.message;
     return 'API error occurred';
 }
 
-/**
- * Creates inline keyboard with retry options
- */
 function createRetryKeyboard(currentModelKey) {
     const allModels = getAllModels();
-    const buttons = [];
-    
-    // Add retry with current model
-    buttons.push([{ text: '🔄 Retry', callback_data: 'retry_same' }]);
-    
-    // Add all other models
+    const buttons = [[{ text: '🔄 Retry', callback_data: 'retry_same' }]];
     for (const [key, model] of Object.entries(allModels)) {
         if (key !== currentModelKey) {
-            buttons.push([{
-                text: `${model.displayName} & Retry`,
-                callback_data: `retry_${key}`
-            }]);
+            buttons.push([{ text: `${model.displayName} & Retry`, callback_data: `retry_${key}` }]);
         }
     }
-    
-    // Add exit button
     buttons.push([{ text: '❌ Exit', callback_data: 'retry_exit' }]);
-    
     return { inline_keyboard: buttons };
 }
 
@@ -209,55 +168,35 @@ async function processImage(chatId, imageBuffer, messageId = null) {
     try {
         bot.sendChatAction(chatId, 'typing');
         
-        // Call vision API
         const responseText = await identifyCardsFromImage(imageBuffer);
-        
-        // Extract cards from backticks
         const cardString = extractCardsFromResponse(responseText);
         
         if (!cardString) {
-            // Bad response - model didn't use backticks
             const currentModel = getCurrentModel();
             const errorMsg = `❌ ${currentModel.displayName}: Bad response`;
-            
             const contextId = `${chatId}_${Date.now()}`;
             retryContexts.set(contextId, { imageBuffer, chatId });
-            
             const keyboard = createRetryKeyboard(currentModelKey);
-            keyboard.inline_keyboard = keyboard.inline_keyboard.map(row => 
-                row.map(btn => ({
-                    ...btn,
-                    callback_data: `${btn.callback_data}_${contextId}`
-                }))
-            );
+            keyboard.inline_keyboard = keyboard.inline_keyboard.map(row => row.map(btn => ({ ...btn, callback_data: `${btn.callback_data}_${contextId}` })));
             
             if (messageId) {
-                await bot.editMessageText(errorMsg, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    reply_markup: keyboard
-                });
+                await bot.editMessageText(errorMsg, { chat_id: chatId, message_id: messageId, reply_markup: keyboard });
             } else {
                 await bot.sendMessage(chatId, errorMsg, { reply_markup: keyboard });
             }
             return;
         }
         
-        // Parse cards and run solver - let solver handle validation
         const cardCodes = cardString.trim().split(/\s+/);
         const parsedCards = cardCodes.map(parseCard);
         
-        // Run solver
         const startTime = performance.now();
         const { best } = solveOptimizedV2(parsedCards);
         const endTime = performance.now();
         const solveTime = ((endTime - startTime) / 1000).toFixed(3);
 
-        if (!best) {
-            throw new Error('Solver returned no valid arrangement');
-        }
+        if (!best) throw new Error('Solver returned no valid arrangement');
 
-        // Format result
         const repeatText = best.isRepeat ? '✅ (Repeat FL)' : '';
         const frontFormatted = best.front.map(formatCardWithColor).join(' ');
         const middleFormatted = best.middle.map(formatCardWithColor).join(' ');
@@ -273,62 +212,38 @@ async function processImage(chatId, imageBuffer, messageId = null) {
 *Discards:* \`${discardsFormatted}\`
 
 *Score:* ${best.finalEV.toFixed(2)} pts ${repeatText}
-*Time:* ${solveTime}s
-`;
+*Time:* ${solveTime}s`;
         
         if (messageId) {
-            await bot.editMessageText(resultMessage, {
-                chat_id: chatId,
-                message_id: messageId,
-                parse_mode: 'Markdown'
-            });
+            await bot.editMessageText(resultMessage, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' });
         } else {
             await bot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
         }
 
     } catch (error) {
         console.error("Processing Error:", error);
-        
-        // Check if it's a solver error (bad card data)
         const currentModel = getCurrentModel();
         let errorMessage;
-        
-        if (error.message && (
-            error.message.includes('Solver') || 
-            error.message.includes('at least 13 cards') ||
-            error.message.includes('valid arrangement'))) {
+        if (error.message && (error.message.includes('Solver') || error.message.includes('at least 13 cards') || error.message.includes('valid arrangement'))) {
             errorMessage = 'Bad response';
         } else {
-            // API error - extract message
             errorMessage = extractErrorMessage(error);
         }
-        
         const errorMsg = `❌ ${currentModel.displayName}: ${errorMessage}`;
-        
         const contextId = `${chatId}_${Date.now()}`;
         retryContexts.set(contextId, { imageBuffer, chatId });
-        
         const keyboard = createRetryKeyboard(currentModelKey);
-        keyboard.inline_keyboard = keyboard.inline_keyboard.map(row => 
-            row.map(btn => ({
-                ...btn,
-                callback_data: `${btn.callback_data}_${contextId}`
-            }))
-        );
+        keyboard.inline_keyboard = keyboard.inline_keyboard.map(row => row.map(btn => ({ ...btn, callback_data: `${btn.callback_data}_${contextId}` })));
         
         if (messageId) {
-            await bot.editMessageText(errorMsg, {
-                chat_id: chatId,
-                message_id: messageId,
-                reply_markup: keyboard
-            });
+            await bot.editMessageText(errorMsg, { chat_id: chatId, message_id: messageId, reply_markup: keyboard });
         } else {
             await bot.sendMessage(chatId, errorMsg, { reply_markup: keyboard });
         }
     }
 }
 
-// ========== BOT COMMANDS ==========
+// ========== BOT COMMANDS (unchanged) ==========
 
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
@@ -357,9 +272,7 @@ bot.onText(/\/solve (.+)/, async (msg, match) => {
         }
 
         const parsedCards = cardCodes.map(parseCard);
-        const invalidCards = parsedCards.filter(c => c === null);
-
-        if (invalidCards.length > 0) {
+        if (parsedCards.some(c => c === null)) {
             bot.sendMessage(chatId, `❌ Couldn't parse some cards.`);
             return;
         }
@@ -389,8 +302,7 @@ bot.onText(/\/solve (.+)/, async (msg, match) => {
 *Discards:* \`${discardsFormatted}\`
 
 *Score:* ${best.finalEV.toFixed(2)} pts ${repeatText}
-*Time:* ${solveTime}s
-`;
+*Time:* ${solveTime}s`;
         bot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
 
     } catch (error) {
@@ -402,24 +314,18 @@ bot.onText(/\/solve (.+)/, async (msg, match) => {
 bot.onText(/\/model/, (msg) => {
     const chatId = msg.chat.id;
     const allModels = getAllModels();
-    
     const keyboard = {
         inline_keyboard: Object.keys(allModels).map(key => [{
             text: `${allModels[key].displayName} (${allModels[key].provider})${key === currentModelKey ? ' ✓' : ''}`,
             callback_data: `model_${key}`
         }])
     };
-    
-    bot.sendMessage(chatId, '*Select Vision Model:*', { 
-        parse_mode: 'Markdown',
-        reply_markup: keyboard 
-    });
+    bot.sendMessage(chatId, '*Select Vision Model:*', { parse_mode: 'Markdown', reply_markup: keyboard });
 });
 
 bot.onText(/\/status/, (msg) => {
     const chatId = msg.chat.id;
     const currentModel = getCurrentModel();
-    
     const statusMessage = `*Current Settings:*
 
 *Model:* ${currentModel.displayName}
@@ -431,11 +337,8 @@ Use /model to switch.`;
 
 bot.onText(/\/flash/, (msg) => {
     const chatId = msg.chat.id;
-    const success = setCurrentModel('flash');
-    
-    if (success) {
-        const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ Switched to ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    if (setCurrentModel('flash')) {
+        bot.sendMessage(chatId, `✅ Switched to ${getCurrentModel().displayName}`, { parse_mode: 'Markdown' });
     } else {
         bot.sendMessage(chatId, '❌ Error switching model');
     }
@@ -443,11 +346,8 @@ bot.onText(/\/flash/, (msg) => {
 
 bot.onText(/\/pro/, (msg) => {
     const chatId = msg.chat.id;
-    const success = setCurrentModel('pro');
-    
-    if (success) {
-        const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ Switched to ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    if (setCurrentModel('pro')) {
+        bot.sendMessage(chatId, `✅ Switched to ${getCurrentModel().displayName}`, { parse_mode: 'Markdown' });
     } else {
         bot.sendMessage(chatId, '❌ Error switching model');
     }
@@ -455,11 +355,8 @@ bot.onText(/\/pro/, (msg) => {
 
 bot.onText(/\/mistrallarge/, (msg) => {
     const chatId = msg.chat.id;
-    const success = setCurrentModel('mistral-large');
-    
-    if (success) {
-        const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ Switched to ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    if (setCurrentModel('mistral-large')) {
+        bot.sendMessage(chatId, `✅ Switched to ${getCurrentModel().displayName}`, { parse_mode: 'Markdown' });
     } else {
         bot.sendMessage(chatId, '❌ Error switching model');
     }
@@ -467,109 +364,70 @@ bot.onText(/\/mistrallarge/, (msg) => {
 
 bot.onText(/\/mistralsmall/, (msg) => {
     const chatId = msg.chat.id;
-    const success = setCurrentModel('mistral-small');
-    
-    if (success) {
-        const newModel = getCurrentModel();
-        bot.sendMessage(chatId, `✅ Switched to ${newModel.displayName}`, { parse_mode: 'Markdown' });
+    if (setCurrentModel('mistral-small')) {
+        bot.sendMessage(chatId, `✅ Switched to ${getCurrentModel().displayName}`, { parse_mode: 'Markdown' });
     } else {
         bot.sendMessage(chatId, '❌ Error switching model');
     }
 });
 
-// ========== CALLBACK QUERY HANDLER ==========
+// ========== CALLBACK QUERY HANDLER (unchanged) ==========
 
 bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
     const data = query.data;
     
-    // Handle model selection
     if (data.startsWith('model_')) {
         const modelKey = data.replace('model_', '');
-        const success = setCurrentModel(modelKey);
-        
-        if (success) {
+        if (setCurrentModel(modelKey)) {
             const newModel = getCurrentModel();
             bot.answerCallbackQuery(query.id, { text: `Switched to ${newModel.displayName}` });
-            bot.editMessageText(`✅ Switched to ${newModel.displayName}`, {
-                chat_id: chatId,
-                message_id: query.message.message_id,
-                parse_mode: 'Markdown'
-            });
+            bot.editMessageText(`✅ Switched to ${newModel.displayName}`, { chat_id: chatId, message_id: query.message.message_id, parse_mode: 'Markdown' });
         } else {
             bot.answerCallbackQuery(query.id, { text: 'Error switching model' });
         }
         return;
     }
     
-    // Handle retry actions
     if (data.startsWith('retry_')) {
         const parts = data.split('_');
         const action = parts[1];
         const contextId = parts.slice(2).join('_');
-        
         const context = retryContexts.get(contextId);
         if (!context) {
             bot.answerCallbackQuery(query.id, { text: 'Session expired, send new screenshot' });
             return;
         }
-        
         if (action === 'exit') {
             bot.answerCallbackQuery(query.id, { text: 'Cancelled' });
-            bot.editMessageText('❌ Cancelled', {
-                chat_id: chatId,
-                message_id: query.message.message_id
-            });
+            bot.editMessageText('❌ Cancelled', { chat_id: chatId, message_id: query.message.message_id });
             retryContexts.delete(contextId);
             return;
         }
-        
-        // Switch model if needed
-        if (action !== 'same') {
-            setCurrentModel(action);
-        }
-        
+        if (action !== 'same') setCurrentModel(action);
         const currentModel = getCurrentModel();
         bot.answerCallbackQuery(query.id, { text: `Retrying with ${currentModel.displayName}...` });
-        
-        // Update message to show processing
-        bot.editMessageText(`🔄 Retrying with ${currentModel.displayName}...`, {
-            chat_id: chatId,
-            message_id: query.message.message_id
-        });
-        
-        // Process image with retry
+        bot.editMessageText(`🔄 Retrying with ${currentModel.displayName}...`, { chat_id: chatId, message_id: query.message.message_id });
         await processImage(context.chatId, context.imageBuffer, query.message.message_id);
-        
-        // Clean up context
         retryContexts.delete(contextId);
     }
 });
 
-// ========== PHOTO HANDLER (commented while testing only for uncompressed images) ==========
+// ========== NEW PHOTO HANDLER (for compressed images) ==========
 
-// bot.on('photo', async (msg) => {
-//     const chatId = msg.chat.id;
-//     const photo = msg.photo[msg.photo.length - 1];
+bot.on('photo', async (msg) => {
+    const chatId = msg.chat.id;
+    const instructionMessage = `⚠️ *Image was compressed!*
 
-//     try {
-//         bot.sendChatAction(chatId, 'typing');
-        
-//         const fileStream = bot.getFileStream(photo.file_id);
+*Please resend and UNCHECK "Compress the image"* (shown above)
 
-//         const chunks = [];
-//         for await (const chunk of fileStream) {
-//             chunks.push(chunk);
-//         }
-//         const imageBuffer = Buffer.concat(chunks);
+Required for accurate card detection. 🙏`;
 
-//         await processImage(chatId, imageBuffer);
-
-//     } catch (error) {
-//         console.error("Photo Handler Error:", error);
-//         await bot.sendMessage(chatId, "❌ Error processing image");
-//     }
-// });
+    await bot.sendPhoto(chatId, 'https://i.ibb.co/Txb5PpMs/1info.png', {
+        caption: instructionMessage,
+        parse_mode: 'Markdown'
+    });
+});
 
 // ========== DOCUMENT HANDLER (for uncompressed images) ==========
 
@@ -577,27 +435,22 @@ bot.on('document', async (msg) => {
     const chatId = msg.chat.id;
     const document = msg.document;
 
-    // Only process image documents
     if (!document.mime_type || !document.mime_type.startsWith('image/')) {
         return; // Ignore non-image documents
     }
 
     try {
         bot.sendChatAction(chatId, 'typing');
-
         const fileStream = bot.getFileStream(document.file_id);
-
         const chunks = [];
         for await (const chunk of fileStream) {
             chunks.push(chunk);
         }
         const imageBuffer = Buffer.concat(chunks);
-
         await processImage(chatId, imageBuffer);
-
     } catch (error) {
         console.error("Document Handler Error:", error);
-        await bot.sendMessage(chatId, "❌ Error processing image");
+        await bot.sendMessage(chatId, "❌ Error processing image file.");
     }
 });
 
