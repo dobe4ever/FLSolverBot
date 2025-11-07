@@ -11,7 +11,7 @@ const temperature = 0;
 const systemInstruction = `You are analyzing a screenshot of a poker app showing several playing cards face up in a row. Your job is to identify them and output them in standard poker notation.
 
 STEP 1 - CAREFULLY IDENTIFY EACH CARD:
-From the row of visible playing cards, starting from the first card on the left, list each card writing out the rank and suit in words.
+Starting from the first card on the left, list each card writing out the rank and suit in words.
 Format:
 1. [rank], [suit]
 2. [rank], [suit]
@@ -25,11 +25,11 @@ Use this exact notation system:
 CRITICAL: 
 - Ten is ALWAYS written as 'T', NEVER as '10'
 - Each card is exactly 2 characters: rank + suit
-- Example: TC = Ten of Clubs, 9H = Nine of Hearts, AS = Ace of Spades
+- Example: TC = Ten of Clubs
 
 STEP 3 - OUTPUT:
 Provide all cards in a single line, separated by single spaces, enclosed in triple backticks.
-- Example Format: \`\`\`9C TD 6S QH\`\`\``;
+- Example Format: \`\`\`9C TD 6S\`\`\``;
 
 // Model configurations
 const MODEL_CONFIGS = {
