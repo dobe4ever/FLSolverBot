@@ -8,7 +8,7 @@ const client = new Mistral({
 });
 
 const temperature = 0;
-const systemInstruction = `You are analyzing a screenshot of a poker app showing several playing cards face up in a row. Your job is to identify them and output them in standard poker notation.
+const systemInstruction = `Your job is to extract the playing cards from the picture and return the result formatted as standard poker notation.
 
 STEP 1 - CAREFULLY IDENTIFY EACH CARD:
 Starting from the first card on the left, list each card writing out the rank and suit in words.
@@ -38,7 +38,7 @@ const MODEL_CONFIGS = {
         displayName: 'Mistral Large',
     },
     'mistral-small': {
-        name: 'mistral-small-latest',
+        name: 'mistral-small-2506',
         displayName: 'Mistral Small',
     },
 };
