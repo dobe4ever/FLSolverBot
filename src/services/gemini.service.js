@@ -42,7 +42,7 @@ Provide all cards in a single line, separated by single spaces, enclosed in trip
 const MODEL_CONFIGS = {
     'pro': {
         provider: 'gemini', 
-        name: 'gemini-3-pro-preview',
+        name: 'gemini-2.5-pro',
         displayName: 'Gemini 2.5 Pro',
         thinkingBudget: -1,
     },
