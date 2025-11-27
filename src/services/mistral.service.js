@@ -2,11 +2,14 @@
 
 const { Mistral } = require("@mistralai/mistralai");
 
-// Initialize the Mistral client
 const client = new Mistral({
     apiKey: process.env.MISTRAL_API_KEY,
 });
 
+// DEFAULT
+let currentModelKey = 'mistral-small';
+
+// CONST:
 const temperature = 0;
 const systemInstruction = `Your job is to extract the playing cards from the picture and return the result formatted as standard poker notation.
 
@@ -31,7 +34,6 @@ STEP 3 - OUTPUT:
 Provide all cards in a single line, separated by single spaces, enclosed in triple backticks.
 - Example Format: \`\`\`9C TD 6S\`\`\``;
 
-// Model configurations
 const MODEL_CONFIGS = {
     'mistral-large': {
         name: 'mistral-large-2411',
@@ -43,12 +45,7 @@ const MODEL_CONFIGS = {
     },
 };
 
-// Default model
-let currentModelKey = 'mistral-small';
-
-/**
- * Sets the current model to use
- */
+// CONFIGS
 function setModel(modelKey) {
     if (MODEL_CONFIGS[modelKey]) {
         currentModelKey = modelKey;
@@ -57,26 +54,15 @@ function setModel(modelKey) {
     return false;
 }
 
-/**
- * Gets the current model configuration
- */
 function getCurrentModel() {
     return MODEL_CONFIGS[currentModelKey];
 }
 
-/**
- * Gets all available models
- */
 function getAvailableModels() {
     return MODEL_CONFIGS;
 }
 
-/**
- * Identifies cards from an image buffer using Mistral Vision.
- * Throws error with full details for centralized handling.
- * @param {Buffer} imageBuffer The image data as a buffer.
- * @returns {Promise<string>} Raw response text from the model
- */
+// MAIN FUNC
 async function identifyCardsFromImage(imageBuffer) {
     const modelConfig = MODEL_CONFIGS[currentModelKey];
     
@@ -113,3 +99,52 @@ module.exports = {
     getCurrentModel, 
     getAvailableModels 
 };
+
+
+
+
+
+
+
+
+// no, thats not what i had in mind. the idea is have a single centralized file for when i want to add/remove models. Something like this: 
+
+// ```
+// const System = '...'
+// const temperature = 0
+// // I can add more API options here in the future
+
+// const Client = {
+//     'mistral': {
+//         client: '...',
+//         endpoint: '...',
+//         apiKey: '...',
+//         models: ['...', '...']
+//     },
+//     'gemini': {
+//         client: '...',
+//         endpoint: '...',
+//         apiKey: '...',
+//         models: ['...', '...']
+//     },
+//     // I can add AI clients here in the future
+// };
+
+// // whatever else is needed
+// ```
+
+// Then have the mistral and gemini service files with only the function that calls the model & gets response, typically called chatcompletion or generateContent or whatever it might be for the particular client. Write the most basic chatcompletion function as per the official docs where the params are passed as variables like:
+
+// ```
+// async function main() {
+//   const response = await ai.models.generateContent(
+//   {
+//     model: "gemini-2.5-flash",
+//     contents: "Explain how AI works in a few words",
+//   }
+//     );
+//   console.log(response.text);
+// }
+// ```
+
+// ```

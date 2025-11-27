@@ -1,21 +1,6 @@
 // // gemini edit to optimize speed further solverV3 (testing)
 // src/solver/solver.js
 
-const RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A"];
-const SUITS = ["♠️", "❤️", "🔷", "🟢"];
-const SUIT_MAP = { "♠️": 0, "❤️": 1, "🔷": 2, "🟢": 3, S: 0, H: 1, D: 2, C: 3 };
-
-function parseCard(code) {
-  if (!code || code.length < 2) return null;
-  const c = code.trim().toUpperCase();
-  const r = c[0];
-  const sRaw = c.slice(1);
-  const rank = RANKS.indexOf(r);
-  const suit = SUIT_MAP[sRaw];
-  if (rank === -1 || suit === undefined) return null;
-  return { rank, suit, str: r + SUITS[suit] };
-}
-
 function evalHand(hand) {
   const len = hand.length;
   const ranks = new Array(13).fill(0);
@@ -120,6 +105,43 @@ function areDisjoint(indicesA, indicesB) {
   return true;
 }
 
+// ADD THIS NEW FORMATTING FUNCTION
+function formatSolution({ solveTime, points, finalEV, isRepeat, discards, front, middle, back }) {
+    // Local helper function to format cards with emojis
+    const formatCard = (cardStr) => {
+        if (!cardStr || cardStr.length < 2) return cardStr;
+        const rank = cardStr.slice(0, -1);
+        const suit = cardStr.slice(-1);
+        switch (suit) {
+            case '♠️': return rank + '♠️';
+            case '❤️': return rank + '❤️';
+            case '🔷': return rank + '🔷';
+            case '🟢': return rank + '🟢';
+            default: return cardStr;
+        }
+    };
+
+    const repeatText = isRepeat ? '✅ (Repeat FL)' : '';
+
+    const frontFormatted = front.map(formatCard).join(' ');
+    const middleFormatted = middle.map(formatCard).join(' ');
+    const backFormatted = back.map(formatCard).join(' ');
+    const discardsFormatted = discards.map(formatCard).join(' ');
+
+    return `*Optimal Arrangement Found!*
+
+\`${frontFormatted}\`
+\`${middleFormatted}\`
+\`${backFormatted}\`
+
+*Discards:* \`${discardsFormatted}\`
+
+*Score:* ${finalEV.toFixed(2)} pts ${repeatText}
+*Time:* ${solveTime}s`;
+}
+
+
+// REPLACE YOUR EXISTING solveOptimizedV2 WITH THIS
 function solveOptimizedV2(parsedCards) {
   console.log('🔍 [SOLVER V3] Starting solver with', parsedCards.length, 'cards');
   const solverStartTime = Date.now();
@@ -127,6 +149,7 @@ function solveOptimizedV2(parsedCards) {
   const numCards = parsedCards.length;
   if (numCards < 13) throw new Error("Solver requires at least 13 cards.");
   
+  // ... (the entire middle part of the solver function remains unchanged) ...
   console.log('⏱️  [SOLVER] Step 1: Generating all 5-card combinations...');
   const step1Start = Date.now();
   const fiveCardHands = [];
@@ -140,7 +163,6 @@ function solveOptimizedV2(parsedCards) {
   
   console.log('⏱️  [SOLVER] Step 2: Sorting five-card hands by ROYALTY first...');
   const step2Start = Date.now();
-  // --- V3 OPTIMIZATION: ROYALTY-FIRST SORTING ---
   fiveCardHands.sort((a, b) => {
     const royaltyDiff = b.backRoyalty - a.backRoyalty;
     if (royaltyDiff !== 0) return royaltyDiff;
@@ -155,7 +177,6 @@ function solveOptimizedV2(parsedCards) {
   let cacheHits = 0;
   let prunedCount = 0;
 
-  // --- V3 OPTIMIZATION: Memoized function for both best front hand AND max royalty ---
   const getBestFrontData = (remainingIndices) => {
     const cacheKey = remainingIndices.join(',');
     if (frontHandCache.has(cacheKey)) {
@@ -195,12 +216,10 @@ function solveOptimizedV2(parsedCards) {
       pairCount++;
       const middleHand = fiveCardHands[j];
       
-      // Pruning check #1: Hand strength validity
       if (compareHands(backHand.ev, middleHand.ev) < 0) continue;
 
       const currentBestScore = bestOverallArrangement?.points ?? -1;
 
-      // Pruning check #2: Early exit if back+middle royalties are too low
       if (backHand.backRoyalty + middleHand.middleRoyalty < currentBestScore - 22) {
           prunedCount++;
           continue;
@@ -211,10 +230,8 @@ function solveOptimizedV2(parsedCards) {
       const usedIndices = new Set([...backHand.indices, ...middleHand.indices]);
       const remainingIndices = allCardIndices.filter((idx) => !usedIndices.has(idx));
       
-      // --- V3 OPTIMIZATION: DYNAMIC PRUNING ---
       const { bestFront, maxRoyalty } = getBestFrontData(remainingIndices);
 
-      // Pruning check #3: The most powerful one
       if (backHand.backRoyalty + middleHand.middleRoyalty + maxRoyalty < currentBestScore) {
           prunedCount++;
           continue;
@@ -269,11 +286,10 @@ function solveOptimizedV2(parsedCards) {
   console.log(`   [SOLVER] Stats: Pairs checked: ${pairCount} | Pairs pruned: ${prunedCount} | Cache hits: ${cacheHits} | Cache size: ${frontHandCache.size}`);
 
   if (!bestOverallArrangement) {
-    console.log('❌ [SOLVER] No valid arrangement found!');
-    return { best: null };
+    throw new Error("Solver returned no valid arrangement");
   }
   
-  console.log('⏱️  [SOLVER] Step 4: Final selection and formatting...');
+  console.log('⏱️  [SOLVER] Step 4: Final selection...');
   const step4Start = Date.now();
   const overallScore = bestOverallArrangement.points;
   const repeatEVScore = bestRepeatArrangement ? bestRepeatArrangement.points + 8.25 : -1;
@@ -290,22 +306,25 @@ function solveOptimizedV2(parsedCards) {
 
   const sortByRankDesc = (cards) =>
     [...cards].sort((a, b) => b.rank - a.rank).map((c) => c.str);
-
-  const bestResult = { 
-    points: finalChoice.points,
-    finalEV: finalPoints,
-    isRepeat: isRepeatChoice,
-    discards: sortByRankDesc(discardIndices.map((i) => parsedCards[i])),
-    front: sortByRankDesc(finalChoice.frontData.hand),
-    middle: sortByRankDesc(finalChoice.middleData.hand),
-    back: sortByRankDesc(finalChoice.backData.hand)
-  };
   
   console.log('✅ [SOLVER] Step 4 complete in', (Date.now() - step4Start), 'ms');
-  console.log('🎉 [SOLVER] TOTAL SOLVER TIME:', (Date.now() - solverStartTime), 'ms');
-  console.log('📊 [SOLVER] Best score:', bestResult.finalEV, 'points', isRepeatChoice ? '(Repeat FL)' : '');
+  
+  // Calculate final time and format the solution
+  const solveTime = ((Date.now() - solverStartTime) / 1000).toFixed(3);
+  console.log('🎉 [SOLVER] TOTAL SOLVER TIME:', solveTime * 1000, 'ms');
+  
+  const solutionMessage = formatSolution({
+      solveTime,
+      points: finalChoice.points,
+      finalEV: finalPoints,
+      isRepeat: isRepeatChoice,
+      discards: sortByRankDesc(discardIndices.map((i) => parsedCards[i])),
+      front: sortByRankDesc(finalChoice.frontData.hand),
+      middle: sortByRankDesc(finalChoice.middleData.hand),
+      back: sortByRankDesc(finalChoice.backData.hand)
+  });
 
-  return { best: bestResult };
+  return { solutionMessage };
 }
 
-module.exports = { solveOptimizedV2, parseCard };
+module.exports = { solveOptimizedV2 };

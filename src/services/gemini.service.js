@@ -1,5 +1,6 @@
 // src/services/gemini.service.js
 
+// IMPORTS:
 const { GoogleGenAI } = require("@google/genai");
 
 // Track which API key is active
@@ -14,6 +15,7 @@ let ai = new GoogleGenAI({
     apiKey: API_KEYS[activeKeyIndex],
 });
 
+// CONST:
 const temperature = 0;
 const systemInstruction = `Your job is to extract the playing cards from the picture and return the result formatted as standard poker notation.
 
@@ -38,7 +40,6 @@ STEP 3 - OUTPUT:
 Provide all cards in a single line, separated by single spaces, enclosed in triple backticks.
 - Example Format: \`\`\`9C TD 6S\`\`\``;
 
-// Model configurations
 const MODEL_CONFIGS = {
     'pro': {
         provider: 'gemini', 
@@ -54,12 +55,10 @@ const MODEL_CONFIGS = {
     },
 };
 
-// Default model
+// DEFAULS:
 let currentModelKey = 'pro';
 
-/**
- * Rotates to the next API key
- */
+// Rotates to the next API key
 function rotateApiKey() {
     if (API_KEYS.length < 2) return false;
     
@@ -71,9 +70,7 @@ function rotateApiKey() {
     return true;
 }
 
-/**
- * Sets the current model to use
- */
+// CONFIGS
 function setModel(modelKey) {
     if (MODEL_CONFIGS[modelKey]) {
         currentModelKey = modelKey;
@@ -82,26 +79,15 @@ function setModel(modelKey) {
     return false;
 }
 
-/**
- * Gets the current model configuration
- */
 function getCurrentModel() {
     return MODEL_CONFIGS[currentModelKey];
 }
 
-/**
- * Gets all available models
- */
 function getAvailableModels() {
     return MODEL_CONFIGS;
 }
 
-/**
- * Identifies cards from an image buffer using Gemini Vision.
- * Throws error with full details for centralized handling.
- * @param {Buffer} imageBuffer The image data as a buffer.
- * @returns {Promise<string>} Raw response text from the model
- */
+// MAIN FUNC
 async function identifyCardsFromImage(imageBuffer) {
     const modelConfig = MODEL_CONFIGS[currentModelKey];
     
@@ -169,3 +155,49 @@ module.exports = {
     getCurrentModel, 
     getAvailableModels 
 };
+
+
+
+
+
+
+
+
+// import { GoogleGenAI, } from '@google/genai';
+
+// const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY,});
+// const model = 'gemini-2.5-pro';
+// const config = {
+//     temperature: 0,
+//     thinkingConfig: {
+//       thinkingBudget: -1,
+//     },
+//     mediaResolution: 'MEDIA_RESOLUTION_HIGH',
+//     systemInstruction: [
+//         {
+//           text: `test`,
+//         }
+//     ],
+//   };
+// const contents = [
+//     {
+//         role: 'user',
+//         parts: [
+//             {
+//                 inlineData: {
+//                     mimeType: 'image/jpeg',
+//                     data: imageBuffer.toString("base64"),
+//                 },
+//             },
+//         ],
+//     },
+// ];
+
+// async function main() {
+//   const response = await ai.models.generateContent({model, config, contents,});
+//   return response.text;
+// }
+
+// main();
+
+// return response.text;

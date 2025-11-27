@@ -1,34 +1,25 @@
 // src/index.js
 
+// IMPORTED MODULES:
 const TelegramBot = require('node-telegram-bot-api');
-const { performance } = require('perf_hooks');
-const { solveOptimizedV2, parseCard } = require('./solver/solver.js');
 const geminiService = require('./services/gemini.service.js');
 const mistralService = require('./services/mistral.service.js');
+const { solveOptimizedV2 } = require('./solver/solver.js');
 
-// ========== Bot Setup ==========
+// ENV VARIABLES
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
-if (!token) {
-    console.error('Error: TELEGRAM_BOT_TOKEN is not set!');
-    process.exit(1);
-}
-if (!process.env.GEMINI_API_KEY) {
-    console.error('Error: GEMINI_API_KEY is not set!');
-    process.exit(1);
-}
-if (!process.env.MISTRAL_API_KEY) {
-    console.error('Error: MISTRAL_API_KEY is not set!');
-    process.exit(1);
-}
-
+// BOT
 const bot = new TelegramBot(token, { polling: true });
 
-// ========== Retry Context Storage ==========
+// DEFAULTS
+let currentProvider = 'gemini';
+let currentModelKey = 'pro';
+
+// Stores image buffers and chat IDs to allow retrying with different models
 const retryContexts = new Map();
 
-// ========== MODEL MANAGEMENT ==========
-
+// FUNCTION DEF:
 function getAllModels() {
     const geminiModels = geminiService.getAvailableModels();
     const mistralModels = mistralService.getAvailableModels();
@@ -51,9 +42,6 @@ function getAllModels() {
     
     return { ...geminiWithProvider, ...mistralWithProvider };
 }
-
-let currentProvider = 'gemini';
-let currentModelKey = 'pro';
 
 function setCurrentModel(modelKey) {
     const allModels = getAllModels();
@@ -90,27 +78,36 @@ async function identifyCardsFromImage(imageBuffer) {
     throw new Error('Unknown provider');
 }
 
-// ========== UTILITY FUNCTIONS ==========
+function parseResponse(responseText) {
+    // CONSTANTS FOR PARSING:
+    const RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A"];
+    const SUITS = ["♠️", "❤️", "🔷", "🟢"];
+    const SUIT_MAP = { "♠️": 0, "❤️": 1, "🔷": 2, "🟢": 3, S: 0, H: 1, D: 2, C: 3 };
 
-function formatCardWithColor(cardStr) {
-    if (!cardStr || cardStr.length < 2) return cardStr;
-    const rank = cardStr.slice(0, -1);
-    const suit = cardStr.slice(-1);
-    switch (suit) {
-        case '♠': return rank + '♠️';
-        case '♥': return rank + '❤️';
-        case '♦': return rank + '🔷';
-        case '♣': return rank + '🟢';
-        default: return cardStr;
-    }
-}
-
-function extractCardsFromResponse(responseText) {
+    // 1. Extract content between backticks
     const match = responseText.match(/```([\s\S]*?)```/);
-    if (match && match[1]) {
-        return match[1].trim();
-    }
-    return null;
+    if (!match || !match[1]) return null;
+
+    const cardString = match[1].trim();
+    const cardCodes = cardString.split(/\s+/);
+
+    // 2. Parse into objects
+    const parsedCards = cardCodes.map(code => {
+        if (!code || code.length < 2) return null;
+        const c = code.trim().toUpperCase();
+        const r = c[0];
+        const sRaw = c.slice(1);
+        const rank = RANKS.indexOf(r);
+        const suit = SUIT_MAP[sRaw];
+        
+        if (rank === -1 || suit === undefined) return null;
+        return { rank, suit, str: r + SUITS[suit] };
+    }).filter(c => c !== null);
+
+    // Basic validation: Solver needs at least 13 cards
+    if (parsedCards.length < 13) return null;
+
+    return parsedCards;
 }
 
 function extractErrorMessage(error) {
@@ -149,89 +146,7 @@ function createRetryKeyboard(currentModelKey) {
     return { inline_keyboard: buttons };
 }
 
-// ========== MAIN PROCESSING FUNCTION ==========
-
-async function processImage(chatId, imageBuffer, messageId = null) {
-    try {
-        bot.sendChatAction(chatId, 'typing');
-        
-        const responseText = await identifyCardsFromImage(imageBuffer);
-        const cardString = extractCardsFromResponse(responseText);
-        
-        if (!cardString) {
-            const currentModel = getCurrentModel();
-            const errorMsg = `❌ ${currentModel.displayName}: Bad response`;
-            const contextId = `${chatId}_${Date.now()}`;
-            retryContexts.set(contextId, { imageBuffer, chatId });
-            const keyboard = createRetryKeyboard(currentModelKey);
-            keyboard.inline_keyboard = keyboard.inline_keyboard.map(row => row.map(btn => ({ ...btn, callback_data: `${btn.callback_data}_${contextId}` })));
-            
-            if (messageId) {
-                await bot.editMessageText(errorMsg, { chat_id: chatId, message_id: messageId, reply_markup: keyboard });
-            } else {
-                await bot.sendMessage(chatId, errorMsg, { reply_markup: keyboard });
-            }
-            return;
-        }
-        
-        const cardCodes = cardString.trim().split(/\s+/);
-        const parsedCards = cardCodes.map(parseCard);
-        
-        const startTime = performance.now();
-        const { best } = solveOptimizedV2(parsedCards);
-        const endTime = performance.now();
-        const solveTime = ((endTime - startTime) / 1000).toFixed(3);
-
-        if (!best) throw new Error('Solver returned no valid arrangement');
-
-        const repeatText = best.isRepeat ? '✅ (Repeat FL)' : '';
-        const frontFormatted = best.front.map(formatCardWithColor).join(' ');
-        const middleFormatted = best.middle.map(formatCardWithColor).join(' ');
-        const backFormatted = best.back.map(formatCardWithColor).join(' ');
-        const discardsFormatted = best.discards.map(formatCardWithColor).join(' ');
-
-        const resultMessage = `*Optimal Arrangement Found!*
-
-\`${frontFormatted}\`
-\`${middleFormatted}\`
-\`${backFormatted}\`
-
-*Discards:* \`${discardsFormatted}\`
-
-*Score:* ${best.finalEV.toFixed(2)} pts ${repeatText}
-*Time:* ${solveTime}s`;
-        
-        if (messageId) {
-            await bot.editMessageText(resultMessage, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' });
-        } else {
-            await bot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
-        }
-
-    } catch (error) {
-        console.error("Processing Error:", error);
-        const currentModel = getCurrentModel();
-        let errorMessage;
-        if (error.message && (error.message.includes('Solver') || error.message.includes('at least 13 cards') || error.message.includes('valid arrangement'))) {
-            errorMessage = 'Bad response';
-        } else {
-            errorMessage = extractErrorMessage(error);
-        }
-        const errorMsg = `❌ ${currentModel.displayName}: ${errorMessage}`;
-        const contextId = `${chatId}_${Date.now()}`;
-        retryContexts.set(contextId, { imageBuffer, chatId });
-        const keyboard = createRetryKeyboard(currentModelKey);
-        keyboard.inline_keyboard = keyboard.inline_keyboard.map(row => row.map(btn => ({ ...btn, callback_data: `${btn.callback_data}_${contextId}` })));
-        
-        if (messageId) {
-            await bot.editMessageText(errorMsg, { chat_id: chatId, message_id: messageId, reply_markup: keyboard });
-        } else {
-            await bot.sendMessage(chatId, errorMsg, { reply_markup: keyboard });
-        }
-    }
-}
-
-// ========== BOT COMMANDS (unchanged) ==========
-
+// BOT COMMANDS:
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     const currentModel = getCurrentModel();
@@ -243,59 +158,6 @@ bot.onText(/\/start/, (msg) => {
 /model - Switch model
 /status - View settings`;
     bot.sendMessage(chatId, startMessage, { parse_mode: 'Markdown' });
-});
-
-bot.onText(/\/solve (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const cardString = match[1];
-    
-    try {
-        const cardCodes = cardString.trim().split(/\s+/);
-        const numCards = cardCodes.length;
-
-        if (numCards < 14 || numCards > 17) {
-            bot.sendMessage(chatId, `❌ Found ${numCards} cards, need 14-17.`);
-            return;
-        }
-
-        const parsedCards = cardCodes.map(parseCard);
-        if (parsedCards.some(c => c === null)) {
-            bot.sendMessage(chatId, `❌ Couldn't parse some cards.`);
-            return;
-        }
-
-        const startTime = performance.now();
-        const { best } = solveOptimizedV2(parsedCards);
-        const endTime = performance.now();
-        const solveTime = ((endTime - startTime) / 1000).toFixed(3);
-
-        if (!best) {
-            bot.sendMessage(chatId, "❌ No valid arrangement found");
-            return;
-        }
-
-        const repeatText = best.isRepeat ? '✅ (Repeat FL)' : '';
-        const frontFormatted = best.front.map(formatCardWithColor).join(' ');
-        const middleFormatted = best.middle.map(formatCardWithColor).join(' ');
-        const backFormatted = best.back.map(formatCardWithColor).join(' ');
-        const discardsFormatted = best.discards.map(formatCardWithColor).join(' ');
-
-        const resultMessage = `*Optimal Arrangement Found!*
-
-\`${frontFormatted}\`
-\`${middleFormatted}\`
-\`${backFormatted}\`
-
-*Discards:* \`${discardsFormatted}\`
-
-*Score:* ${best.finalEV.toFixed(2)} pts ${repeatText}
-*Time:* ${solveTime}s`;
-        bot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
-
-    } catch (error) {
-        console.error("Solver Error:", error);
-        bot.sendMessage(chatId, "❌ Solver error occurred");
-    }
 });
 
 bot.onText(/\/model/, (msg) => {
@@ -358,8 +220,7 @@ bot.onText(/\/mistralsmall/, (msg) => {
     }
 });
 
-// ========== CALLBACK QUERY HANDLER (unchanged) ==========
-
+// CALLBACK QUERY HANDLER:
 bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
     const data = query.data;
@@ -400,8 +261,7 @@ bot.on('callback_query', async (query) => {
     }
 });
 
-// ========== NEW PHOTO HANDLER (for compressed images) ==========
-
+// PHOTO HANDLER (COMPRESSED IMG):
 bot.on('photo', async (msg) => {
     const chatId = msg.chat.id;
     const instructionMessage = `⚠️ *Please resend sceenshot!*
@@ -416,8 +276,7 @@ Ensures accurate card detection! 🙏`;
     });
 });
 
-// ========== DOCUMENT HANDLER (for uncompressed images) ==========
-
+// PHOTO HANDLER (UNCOMPRESSED IMG):
 bot.on('document', async (msg) => {
     const chatId = msg.chat.id;
     const document = msg.document;
@@ -440,6 +299,70 @@ bot.on('document', async (msg) => {
         await bot.sendMessage(chatId, "❌ Error processing image file.");
     }
 });
+
+// MAIN PROCESSING FUNCTION:
+// REPLACE YOUR EXISTING processImage FUNCTION WITH THIS
+async function processImage(chatId, imageBuffer, messageId = null) {
+    try {
+        // 0. Typing action
+        bot.sendChatAction(chatId, 'typing');
+        
+        // 1. Get raw text from VLM
+        const responseText = await identifyCardsFromImage(imageBuffer);
+        
+        // 2. Parse text directly into solver-ready objects
+        const parsedCards = parseResponse(responseText);
+
+        // 3. Validate parsed cards
+        if (!parsedCards) {
+            const currentModel = getCurrentModel();
+            const errorMsg = `❌ ${currentModel.displayName}: Bad response (Could not extract cards)`;
+            const contextId = `${chatId}_${Date.now()}`;
+            retryContexts.set(contextId, { imageBuffer, chatId });
+            const keyboard = createRetryKeyboard(currentModelKey);
+            keyboard.inline_keyboard = keyboard.inline_keyboard.map(row => row.map(btn => ({ ...btn, callback_data: `${btn.callback_data}_${contextId}` })));
+            
+            if (messageId) {
+                await bot.editMessageText(errorMsg, { chat_id: chatId, message_id: messageId, reply_markup: keyboard });
+            } else {
+                await bot.sendMessage(chatId, errorMsg, { reply_markup: keyboard });
+            }
+            return;
+        }
+        
+        // 4. Solve and get the formatted message string
+        const { solutionMessage } = solveOptimizedV2(parsedCards);
+
+        // 5. Reply with the solution
+        if (messageId) {
+            await bot.editMessageText(solutionMessage, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' });
+        } else {
+            await bot.sendMessage(chatId, solutionMessage, { parse_mode: 'Markdown' });
+        }
+
+    } catch (error) {
+        console.error("Processing Error:", error);
+        const currentModel = getCurrentModel();
+        let errorMessage;
+        // Check for solver-specific errors
+        if (error.message && (error.message.includes('Solver') || error.message.includes('at least 13 cards'))) {
+            errorMessage = 'Solver Error: ' + error.message;
+        } else {
+            errorMessage = extractErrorMessage(error);
+        }
+        const errorMsg = `❌ ${currentModel.displayName}: ${errorMessage}`;
+        const contextId = `${chatId}_${Date.now()}`;
+        retryContexts.set(contextId, { imageBuffer, chatId });
+        const keyboard = createRetryKeyboard(currentModelKey);
+        keyboard.inline_keyboard = keyboard.inline_keyboard.map(row => row.map(btn => ({ ...btn, callback_data: `${btn.callback_data}_${contextId}` })));
+        
+        if (messageId) {
+            await bot.editMessageText(errorMsg, { chat_id: chatId, message_id: messageId, reply_markup: keyboard });
+        } else {
+            await bot.sendMessage(chatId, errorMsg, { reply_markup: keyboard });
+        }
+    }
+}
 
 console.log('🚀 FL Solver Bot is running!');
 
