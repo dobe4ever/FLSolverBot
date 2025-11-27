@@ -1,4 +1,3 @@
-// // gemini edit to optimize speed further solverV3 (testing)
 // src/solver/solver.js
 
 function evalHand(hand) {
@@ -141,8 +140,8 @@ function formatSolution({ solveTime, points, finalEV, isRepeat, discards, front,
 }
 
 
-// REPLACE YOUR EXISTING solveOptimizedV2 WITH THIS
-function solveOptimizedV2(parsedCards) {
+// REPLACE YOUR EXISTING solver WITH THIS
+function solver(parsedCards) {
   console.log('🔍 [SOLVER V3] Starting solver with', parsedCards.length, 'cards');
   const solverStartTime = Date.now();
   
@@ -327,4 +326,4 @@ function solveOptimizedV2(parsedCards) {
   return { solutionMessage };
 }
 
-module.exports = { solveOptimizedV2 };
+module.exports = { solver };

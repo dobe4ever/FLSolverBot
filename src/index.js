@@ -4,7 +4,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const geminiService = require('./services/gemini.service.js');
 const mistralService = require('./services/mistral.service.js');
-const { solveOptimizedV2 } = require('./solver/solver.js');
+const { solver } = require('./solver/solver.js');
 
 // ENV VARIABLES
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -160,7 +160,7 @@ bot.onText(/\/start/, (msg) => {
     bot.sendMessage(chatId, startMessage, { parse_mode: 'Markdown' });
 });
 
-bot.onText(/\/model/, (msg) => {
+bot.onText(/\/models/, (msg) => {
     const chatId = msg.chat.id;
     const allModels = getAllModels();
     const keyboard = {
@@ -170,54 +170,6 @@ bot.onText(/\/model/, (msg) => {
         }])
     };
     bot.sendMessage(chatId, '*Select Vision Model:*', { parse_mode: 'Markdown', reply_markup: keyboard });
-});
-
-bot.onText(/\/status/, (msg) => {
-    const chatId = msg.chat.id;
-    const currentModel = getCurrentModel();
-    const statusMessage = `*Current Settings:*
-
-*Model:* ${currentModel.displayName}
-*Provider:* ${currentModel.provider}
-
-Use /model to switch.`;
-    bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
-});
-
-bot.onText(/\/flash/, (msg) => {
-    const chatId = msg.chat.id;
-    if (setCurrentModel('flash')) {
-        bot.sendMessage(chatId, `✅ Switched to ${getCurrentModel().displayName}`, { parse_mode: 'Markdown' });
-    } else {
-        bot.sendMessage(chatId, '❌ Error switching model');
-    }
-});
-
-bot.onText(/\/pro/, (msg) => {
-    const chatId = msg.chat.id;
-    if (setCurrentModel('pro')) {
-        bot.sendMessage(chatId, `✅ Switched to ${getCurrentModel().displayName}`, { parse_mode: 'Markdown' });
-    } else {
-        bot.sendMessage(chatId, '❌ Error switching model');
-    }
-});
-
-bot.onText(/\/mistrallarge/, (msg) => {
-    const chatId = msg.chat.id;
-    if (setCurrentModel('mistral-large')) {
-        bot.sendMessage(chatId, `✅ Switched to ${getCurrentModel().displayName}`, { parse_mode: 'Markdown' });
-    } else {
-        bot.sendMessage(chatId, '❌ Error switching model');
-    }
-});
-
-bot.onText(/\/mistralsmall/, (msg) => {
-    const chatId = msg.chat.id;
-    if (setCurrentModel('mistral-small')) {
-        bot.sendMessage(chatId, `✅ Switched to ${getCurrentModel().displayName}`, { parse_mode: 'Markdown' });
-    } else {
-        bot.sendMessage(chatId, '❌ Error switching model');
-    }
 });
 
 // CALLBACK QUERY HANDLER:
@@ -256,7 +208,7 @@ bot.on('callback_query', async (query) => {
         const currentModel = getCurrentModel();
         bot.answerCallbackQuery(query.id, { text: `Retrying with ${currentModel.displayName}...` });
         bot.editMessageText(`🔄 Retrying with ${currentModel.displayName}...`, { chat_id: chatId, message_id: query.message.message_id });
-        await processImage(context.chatId, context.imageBuffer, query.message.message_id);
+        await main(context.chatId, context.imageBuffer, query.message.message_id);
         retryContexts.delete(contextId);
     }
 });
@@ -293,7 +245,7 @@ bot.on('document', async (msg) => {
             chunks.push(chunk);
         }
         const imageBuffer = Buffer.concat(chunks);
-        await processImage(chatId, imageBuffer);
+        await main(chatId, imageBuffer);
     } catch (error) {
         console.error("Document Handler Error:", error);
         await bot.sendMessage(chatId, "❌ Error processing image file.");
@@ -301,8 +253,8 @@ bot.on('document', async (msg) => {
 });
 
 // MAIN PROCESSING FUNCTION:
-// REPLACE YOUR EXISTING processImage FUNCTION WITH THIS
-async function processImage(chatId, imageBuffer, messageId = null) {
+// REPLACE YOUR EXISTING main FUNCTION WITH THIS
+async function main(chatId, imageBuffer, messageId = null) {
     try {
         // 0. Typing action
         bot.sendChatAction(chatId, 'typing');
@@ -331,7 +283,7 @@ async function processImage(chatId, imageBuffer, messageId = null) {
         }
         
         // 4. Solve and get the formatted message string
-        const { solutionMessage } = solveOptimizedV2(parsedCards);
+        const { solutionMessage } = solver(parsedCards);
 
         // 5. Reply with the solution
         if (messageId) {

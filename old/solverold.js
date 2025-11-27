@@ -118,7 +118,7 @@
 //   return true;
 // }
 
-// function solveOptimizedV2(parsedCards) {
+// function solver(parsedCards) {
 //   console.log('🔍 [SOLVER] Starting solver with', parsedCards.length, 'cards');
 //   const solverStartTime = Date.now();
   
@@ -279,7 +279,7 @@
 //   return { best: bestResult };
 // }
 
-// module.exports = { solveOptimizedV2, parseCard };
+// module.exports = { solver, parseCard };
 
 
 
@@ -409,7 +409,7 @@
 //   return true;
 // }
 
-// function solveOptimizedV2(parsedCards) {
+// function solver(parsedCards) {
 //   console.log('🔍 [SOLVER] Starting solver with', parsedCards.length, 'cards');
 //   const solverStartTime = Date.now();
   
@@ -580,4 +580,4 @@
 //   return { best: bestResult };
 // }
 
-// module.exports = { solveOptimizedV2, parseCard };
+// module.exports = { solver, parseCard };
