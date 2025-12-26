@@ -14,7 +14,7 @@ const bot = new TelegramBot(token, { polling: true });
 
 // DEFAULTS
 let currentProvider = 'gemini';
-let currentModelKey = 'pro';
+let currentModelKey = 'flash';
 
 // Stores image buffers and chat IDs to allow retrying with different models
 const retryContexts = new Map();
