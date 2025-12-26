@@ -49,7 +49,8 @@ const MODEL_CONFIGS = {
     },
     'flash': {
         provider: 'gemini',  
-        name: 'gemini-flash-latest',
+        // name: 'gemini-flash-latest',
+        name: 'gemini-3-flash-preview',
         displayName: 'Gemini Flash',
         thinkingBudget: -1,
     },
