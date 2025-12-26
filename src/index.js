@@ -155,7 +155,7 @@ bot.onText(/\/start/, (msg) => {
 *Current Model:* ${currentModel.displayName}
 
 *Commands:*
-/model - Switch model
+/models - Switch model
 /status - View settings`;
     bot.sendMessage(chatId, startMessage, { parse_mode: 'Markdown' });
 });
