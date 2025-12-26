@@ -57,7 +57,7 @@ const MODEL_CONFIGS = {
 };
 
 // DEFAULS:
-let currentModelKey = 'pro';
+let currentModelKey = 'flash';
 
 // Rotates to the next API key
 function rotateApiKey() {
