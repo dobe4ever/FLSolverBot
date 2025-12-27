@@ -3,7 +3,6 @@
 // IMPORTED MODULES:
 const TelegramBot = require('node-telegram-bot-api');
 const geminiService = require('./services/gemini.service.js');
-const mistralService = require('./services/mistral.service.js');
 const { solver } = require('./solver/solver.js');
 
 // ENV VARIABLES
@@ -13,7 +12,6 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 // DEFAULTS
-let currentProvider = 'gemini';
 let currentModelKey = 'flash';
 
 // Stores image buffers and chat IDs to allow retrying with different models
@@ -22,25 +20,16 @@ const retryContexts = new Map();
 // FUNCTION DEF:
 function getAllModels() {
     const geminiModels = geminiService.getAvailableModels();
-    const mistralModels = mistralService.getAvailableModels();
     
-    const geminiWithProvider = {};
+    const modelsWithProvider = {};
     for (const key in geminiModels) {
-        geminiWithProvider[key] = {
+        modelsWithProvider[key] = {
             ...geminiModels[key],
             provider: 'gemini'
         };
     }
     
-    const mistralWithProvider = {};
-    for (const key in mistralModels) {
-        mistralWithProvider[key] = {
-            ...mistralModels[key],
-            provider: 'mistral'
-        };
-    }
-    
-    return { ...geminiWithProvider, ...mistralWithProvider };
+    return modelsWithProvider;
 }
 
 function setCurrentModel(modelKey) {
@@ -49,33 +38,16 @@ function setCurrentModel(modelKey) {
     
     if (!model) return false;
     
-    currentProvider = model.provider;
     currentModelKey = modelKey;
-    
-    if (currentProvider === 'gemini') {
-        return geminiService.setModel(modelKey);
-    } else if (currentProvider === 'mistral') {
-        return mistralService.setModel(modelKey);
-    }
-    
-    return false;
+    return geminiService.setModel(modelKey);
 }
 
 function getCurrentModel() {
-    if (currentProvider === 'gemini') {
-        return { ...geminiService.getCurrentModel(), provider: 'gemini' };
-    } else if (currentProvider === 'mistral') {
-        return { ...mistralService.getCurrentModel(), provider: 'mistral' };
-    }
+    return { ...geminiService.getCurrentModel(), provider: 'gemini' };
 }
 
 async function identifyCardsFromImage(imageBuffer) {
-    if (currentProvider === 'gemini') {
-        return geminiService.identifyCardsFromImage(imageBuffer);
-    } else if (currentProvider === 'mistral') {
-        return mistralService.identifyCardsFromImage(imageBuffer);
-    }
-    throw new Error('Unknown provider');
+    return geminiService.identifyCardsFromImage(imageBuffer);
 }
 
 function parseResponse(responseText) {
@@ -165,7 +137,7 @@ bot.onText(/\/models/, (msg) => {
     const allModels = getAllModels();
     const keyboard = {
         inline_keyboard: Object.keys(allModels).map(key => [{
-            text: `${allModels[key].displayName} (${allModels[key].provider})${key === currentModelKey ? ' ✓' : ''}`,
+            text: `${allModels[key].displayName}${key === currentModelKey ? ' ✓' : ''}`,
             callback_data: `model_${key}`
         }])
     };
@@ -253,19 +225,13 @@ bot.on('document', async (msg) => {
 });
 
 // MAIN PROCESSING FUNCTION:
-// REPLACE YOUR EXISTING main FUNCTION WITH THIS
 async function main(chatId, imageBuffer, messageId = null) {
     try {
-        // 0. Typing action
         bot.sendChatAction(chatId, 'typing');
         
-        // 1. Get raw text from VLM
         const responseText = await identifyCardsFromImage(imageBuffer);
-        
-        // 2. Parse text directly into solver-ready objects
         const parsedCards = parseResponse(responseText);
 
-        // 3. Validate parsed cards
         if (!parsedCards) {
             const currentModel = getCurrentModel();
             const errorMsg = `❌ ${currentModel.displayName}: Bad response (Could not extract cards)`;
@@ -282,10 +248,8 @@ async function main(chatId, imageBuffer, messageId = null) {
             return;
         }
         
-        // 4. Solve and get the formatted message string
         const { solutionMessage } = solver(parsedCards);
 
-        // 5. Reply with the solution
         if (messageId) {
             await bot.editMessageText(solutionMessage, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' });
         } else {
@@ -296,7 +260,6 @@ async function main(chatId, imageBuffer, messageId = null) {
         console.error("Processing Error:", error);
         const currentModel = getCurrentModel();
         let errorMessage;
-        // Check for solver-specific errors
         if (error.message && (error.message.includes('Solver') || error.message.includes('at least 13 cards'))) {
             errorMessage = 'Solver Error: ' + error.message;
         } else {
