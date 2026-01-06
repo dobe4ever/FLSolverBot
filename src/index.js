@@ -3,7 +3,7 @@
 // IMPORTED MODULES:
 const TelegramBot = require('node-telegram-bot-api');
 const geminiService = require('./services/gemini.service.js');
-const { solver } = require('./solver/solver.js');
+const { solver } = require('./services/solver.js');
 
 // ENV VARIABLES
 const token = process.env.TELEGRAM_BOT_TOKEN;

@@ -1,6 +1,5 @@
 COMMAND TO DUMP CODEBASE INTO codebase.txt
 ```
-
 > codebase.txt && find src -type f -exec sh -c 'echo "===== FILE: {} =====" >> codebase.txt; echo "\n\`\`\`" >> codebase.txt; cat "{}" >> codebase.txt; echo "\n\`\`\`\n" >> codebase.txt;' \;
 ```
 # Project
