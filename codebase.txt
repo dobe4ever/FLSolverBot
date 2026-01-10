@@ -1,112 +1,3 @@
-===== FILE: src/services/mistral.service.js =====
-
-```
-// src/services/mistral.service.js
-
-const { Mistral } = require("@mistralai/mistralai");
-
-const client = new Mistral({
-    apiKey: process.env.MISTRAL_API_KEY,
-});
-
-// DEFAULT
-let currentModelKey = 'mistral-small';
-
-// CONST:
-const temperature = 0;
-const systemInstruction = `Your job is to extract the playing cards from the picture and return the result formatted as standard poker notation.
-
-STEP 1 - CAREFULLY IDENTIFY EACH CARD:
-Starting from the first card on the left, list each card writing out the rank and suit in words.
-Format:
-1. [rank], [suit]
-2. [rank], [suit]
-etc.
-
-STEP 2 - CONVERT TO STANDARD NOTATION:
-Use this exact notation system:
-- RANKS: 2 3 4 5 6 7 8 9 T J Q K A
-- SUITS: C = Clubs, D = Diamonds, H = Hearts, S = Spades
-
-CRITICAL: 
-- Ten is ALWAYS written as 'T', NEVER as '10'
-- Each card is exactly 2 characters: rank + suit
-- Example: TC = Ten of Clubs
-
-STEP 3 - OUTPUT:
-Provide all cards in a single line, separated by single spaces, enclosed in triple backticks.
-- Example Format: \`\`\`9C TD 6S\`\`\``;
-
-const MODEL_CONFIGS = {
-    'mistral-large': {
-        name: 'mistral-large-2411',
-        displayName: 'Mistral Large',
-    },
-    'mistral-small': {
-        name: 'mistral-small-2506',
-        displayName: 'Mistral Small',
-    },
-};
-
-// CONFIGS
-function setModel(modelKey) {
-    if (MODEL_CONFIGS[modelKey]) {
-        currentModelKey = modelKey;
-        return true;
-    }
-    return false;
-}
-
-function getCurrentModel() {
-    return MODEL_CONFIGS[currentModelKey];
-}
-
-function getAvailableModels() {
-    return MODEL_CONFIGS;
-}
-
-// MAIN FUNC
-async function identifyCardsFromImage(imageBuffer) {
-    const modelConfig = MODEL_CONFIGS[currentModelKey];
-    
-    // Convert buffer to base64
-    const base64Image = imageBuffer.toString('base64');
-    const base64DataUrl = `data:image/jpeg;base64,${base64Image}`;
-
-    const chatResponse = await client.chat.complete({
-        model: modelConfig.name,
-        temperature: temperature,
-        messages: [
-            {
-                role: "system",
-                content: systemInstruction,
-            },
-            {
-                role: "user",
-                content: [
-                    {
-                        type: "image_url",
-                        imageUrl: base64DataUrl,
-                    },
-                ],
-            },
-        ],
-    });
-
-    return chatResponse.choices[0].message.content;
-}
-
-module.exports = { 
-    identifyCardsFromImage, 
-    setModel, 
-    getCurrentModel, 
-    getAvailableModels 
-};
-
-```
-
-===== FILE: src/services/gemini.service.js =====
-
 ```
 // src/services/gemini.service.js
 
@@ -126,7 +17,9 @@ let ai = new GoogleGenAI({
 });
 
 // CONST:
-const temperature = 0;
+const MODEL_NAME = 'gemini-3-flash-preview';
+const MODEL_DISPLAY_NAME = 'Gemini 3 Flash Preview';
+
 const systemInstruction = `Your job is to extract the playing cards from the picture and return the result formatted as standard poker notation.
 
 STEP 1 - CAREFULLY IDENTIFY EACH CARD:
@@ -150,24 +43,6 @@ STEP 3 - OUTPUT:
 Provide all cards in a single line, separated by single spaces, enclosed in triple backticks.
 - Example Format: \`\`\`9C TD 6S\`\`\``;
 
-const MODEL_CONFIGS = {
-    'pro': {
-        provider: 'gemini', 
-        name: 'gemini-2.5-pro',
-        displayName: 'Gemini 2.5 Pro',
-        thinkingBudget: -1,
-    },
-    'flash': {
-        provider: 'gemini',  
-        name: 'gemini-flash-latest',
-        displayName: 'Gemini Flash',
-        thinkingBudget: -1,
-    },
-};
-
-// DEFAULS:
-let currentModelKey = 'pro';
-
 // Rotates to the next API key
 function rotateApiKey() {
     if (API_KEYS.length < 2) return false;
@@ -176,36 +51,31 @@ function rotateApiKey() {
     ai = new GoogleGenAI({
         apiKey: API_KEYS[activeKeyIndex],
     });
-    console.log(`🔄 [GEMINI] Rotated to API key ${activeKeyIndex + 1}`);
+    console.log(`🔄 [GEMINI] Rotated to API key #${activeKeyIndex + 1}`);
     return true;
 }
 
-// CONFIGS
-function setModel(modelKey) {
-    if (MODEL_CONFIGS[modelKey]) {
-        currentModelKey = modelKey;
-        return true;
-    }
-    return false;
+// Get current API key number
+function getActiveKeyNumber() {
+    return activeKeyIndex + 1;
 }
 
-function getCurrentModel() {
-    return MODEL_CONFIGS[currentModelKey];
-}
-
-function getAvailableModels() {
-    return MODEL_CONFIGS;
+// Get model info
+function getModelInfo() {
+    return {
+        name: MODEL_NAME,
+        displayName: MODEL_DISPLAY_NAME
+    };
 }
 
 // MAIN FUNC
-async function identifyCardsFromImage(imageBuffer) {
-    const modelConfig = MODEL_CONFIGS[currentModelKey];
-    
+async function identifyCardsFromImage(imageBuffer, chatId = null, bot = null) {
     const config = {
-        temperature: temperature,
+        temperature: 0,
         thinkingConfig: {
-            thinkingBudget: modelConfig.thinkingBudget,
+            thinkingLevel: 'MINIMAL',
         },
+        mediaResolution: 'MEDIA_RESOLUTION_HIGH',
         systemInstruction: [
             {
                 text: systemInstruction,
@@ -229,7 +99,7 @@ async function identifyCardsFromImage(imageBuffer) {
 
     try {
         const response = await ai.models.generateContent({
-            model: modelConfig.name,
+            model: MODEL_NAME,
             config,
             contents,
         });
@@ -244,9 +114,15 @@ async function identifyCardsFromImage(imageBuffer) {
             // Try rotating API key automatically
             if (rotateApiKey()) {
                 console.log('🔄 [GEMINI] Retrying with new API key...');
+                
+                // Notify user about key rotation
+                if (chatId && bot) {
+                    await bot.sendMessage(chatId, '⚠️ API limit reached, switching to backup key...');
+                }
+                
                 // Retry with new key
                 const response = await ai.models.generateContent({
-                    model: modelConfig.name,
+                    model: MODEL_NAME,
                     config,
                     contents,
                 });
@@ -254,21 +130,17 @@ async function identifyCardsFromImage(imageBuffer) {
             }
         }
         
-        // Re-throw error with full details for centralized handling
+        // Re-throw error for centralized handling
         throw error;
     }
 }
 
 module.exports = { 
-    identifyCardsFromImage, 
-    setModel, 
-    getCurrentModel, 
-    getAvailableModels 
+    identifyCardsFromImage,
+    getModelInfo,
+    getActiveKeyNumber
 };
-
 ```
-
-===== FILE: src/solver/solver.js =====
 
 ```
 // src/solver/solver.js
@@ -602,16 +474,13 @@ function solver(parsedCards) {
 module.exports = { solver };
 ```
 
-===== FILE: src/index.js =====
-
 ```
 // src/index.js
 
 // IMPORTED MODULES:
 const TelegramBot = require('node-telegram-bot-api');
 const geminiService = require('./services/gemini.service.js');
-const mistralService = require('./services/mistral.service.js');
-const { solver } = require('./solver/solver.js');
+const { solver } = require('./services/solver.js');
 
 // ENV VARIABLES
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -619,70 +488,9 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 // BOT
 const bot = new TelegramBot(token, { polling: true });
 
-// DEFAULTS
-let currentProvider = 'gemini';
-let currentModelKey = 'pro';
-
-// Stores image buffers and chat IDs to allow retrying with different models
-const retryContexts = new Map();
-
 // FUNCTION DEF:
-function getAllModels() {
-    const geminiModels = geminiService.getAvailableModels();
-    const mistralModels = mistralService.getAvailableModels();
-    
-    const geminiWithProvider = {};
-    for (const key in geminiModels) {
-        geminiWithProvider[key] = {
-            ...geminiModels[key],
-            provider: 'gemini'
-        };
-    }
-    
-    const mistralWithProvider = {};
-    for (const key in mistralModels) {
-        mistralWithProvider[key] = {
-            ...mistralModels[key],
-            provider: 'mistral'
-        };
-    }
-    
-    return { ...geminiWithProvider, ...mistralWithProvider };
-}
-
-function setCurrentModel(modelKey) {
-    const allModels = getAllModels();
-    const model = allModels[modelKey];
-    
-    if (!model) return false;
-    
-    currentProvider = model.provider;
-    currentModelKey = modelKey;
-    
-    if (currentProvider === 'gemini') {
-        return geminiService.setModel(modelKey);
-    } else if (currentProvider === 'mistral') {
-        return mistralService.setModel(modelKey);
-    }
-    
-    return false;
-}
-
-function getCurrentModel() {
-    if (currentProvider === 'gemini') {
-        return { ...geminiService.getCurrentModel(), provider: 'gemini' };
-    } else if (currentProvider === 'mistral') {
-        return { ...mistralService.getCurrentModel(), provider: 'mistral' };
-    }
-}
-
-async function identifyCardsFromImage(imageBuffer) {
-    if (currentProvider === 'gemini') {
-        return geminiService.identifyCardsFromImage(imageBuffer);
-    } else if (currentProvider === 'mistral') {
-        return mistralService.identifyCardsFromImage(imageBuffer);
-    }
-    throw new Error('Unknown provider');
+async function identifyCardsFromImage(imageBuffer, chatId) {
+    return geminiService.identifyCardsFromImage(imageBuffer, chatId, bot);
 }
 
 function parseResponse(responseText) {
@@ -741,101 +549,41 @@ function extractErrorMessage(error) {
     return 'API error occurred';
 }
 
-function createRetryKeyboard(currentModelKey) {
-    const allModels = getAllModels();
-    const buttons = [[{ text: '🔄 Retry', callback_data: 'retry_same' }]];
-    for (const [key, model] of Object.entries(allModels)) {
-        if (key !== currentModelKey) {
-            buttons.push([{ text: `${model.displayName} & Retry`, callback_data: `retry_${key}` }]);
-        }
-    }
-    buttons.push([{ text: '❌ Exit', callback_data: 'retry_exit' }]);
-    return { inline_keyboard: buttons };
-}
-
 // BOT COMMANDS:
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
-    const currentModel = getCurrentModel();
+    const modelInfo = geminiService.getModelInfo();
+    const apiKeyNum = geminiService.getActiveKeyNumber();
+    
     const startMessage = `Hello! 👋 Send me a screenshot of your cards.
 
-*Current Model:* ${currentModel.displayName}
-
-*Commands:*
-/model - Switch model
-/status - View settings`;
+*Current Model:* ${modelInfo.displayName}
+*API Key:* #${apiKeyNum}`;
+    
     bot.sendMessage(chatId, startMessage, { parse_mode: 'Markdown' });
 });
 
-bot.onText(/\/models/, (msg) => {
-    const chatId = msg.chat.id;
-    const allModels = getAllModels();
-    const keyboard = {
-        inline_keyboard: Object.keys(allModels).map(key => [{
-            text: `${allModels[key].displayName} (${allModels[key].provider})${key === currentModelKey ? ' ✓' : ''}`,
-            callback_data: `model_${key}`
-        }])
-    };
-    bot.sendMessage(chatId, '*Select Vision Model:*', { parse_mode: 'Markdown', reply_markup: keyboard });
-});
-
-// CALLBACK QUERY HANDLER:
-bot.on('callback_query', async (query) => {
-    const chatId = query.message.chat.id;
-    const data = query.data;
-    
-    if (data.startsWith('model_')) {
-        const modelKey = data.replace('model_', '');
-        if (setCurrentModel(modelKey)) {
-            const newModel = getCurrentModel();
-            bot.answerCallbackQuery(query.id, { text: `Switched to ${newModel.displayName}` });
-            bot.editMessageText(`✅ Switched to ${newModel.displayName}`, { chat_id: chatId, message_id: query.message.message_id, parse_mode: 'Markdown' });
-        } else {
-            bot.answerCallbackQuery(query.id, { text: 'Error switching model' });
-        }
-        return;
-    }
-    
-    if (data.startsWith('retry_')) {
-        const parts = data.split('_');
-        const action = parts[1];
-        const contextId = parts.slice(2).join('_');
-        const context = retryContexts.get(contextId);
-        if (!context) {
-            bot.answerCallbackQuery(query.id, { text: 'Session expired, send new screenshot' });
-            return;
-        }
-        if (action === 'exit') {
-            bot.answerCallbackQuery(query.id, { text: 'Cancelled' });
-            bot.editMessageText('❌ Cancelled', { chat_id: chatId, message_id: query.message.message_id });
-            retryContexts.delete(contextId);
-            return;
-        }
-        if (action !== 'same') setCurrentModel(action);
-        const currentModel = getCurrentModel();
-        bot.answerCallbackQuery(query.id, { text: `Retrying with ${currentModel.displayName}...` });
-        bot.editMessageText(`🔄 Retrying with ${currentModel.displayName}...`, { chat_id: chatId, message_id: query.message.message_id });
-        await main(context.chatId, context.imageBuffer, query.message.message_id);
-        retryContexts.delete(contextId);
-    }
-});
-
-// PHOTO HANDLER (COMPRESSED IMG):
+// PHOTO HANDLER (COMPRESSED IMAGE):
 bot.on('photo', async (msg) => {
     const chatId = msg.chat.id;
-    const instructionMessage = `⚠️ *Please resend sceenshot!*
+    const photo = msg.photo[msg.photo.length - 1]; // Get highest resolution
 
-*UNCHECK "Compress the image"* (shown above)
-
-Ensures accurate card detection! 🙏`;
-
-    await bot.sendPhoto(chatId, 'https://i.ibb.co/Txb5PpMs/1info.png', {
-        caption: instructionMessage,
-        parse_mode: 'Markdown'
-    });
+    try {
+        bot.sendChatAction(chatId, 'typing');
+        const fileStream = bot.getFileStream(photo.file_id);
+        const chunks = [];
+        for await (const chunk of fileStream) {
+            chunks.push(chunk);
+        }
+        const imageBuffer = Buffer.concat(chunks);
+        await main(chatId, imageBuffer);
+    } catch (error) {
+        console.error("Photo Handler Error:", error);
+        await bot.sendMessage(chatId, "❌ Error processing image.");
+    }
 });
 
-// PHOTO HANDLER (UNCOMPRESSED IMG):
+// DOCUMENT HANDLER (UNCOMPRESSED IMAGE):
 bot.on('document', async (msg) => {
     const chatId = msg.chat.id;
     const document = msg.document;
@@ -860,66 +608,36 @@ bot.on('document', async (msg) => {
 });
 
 // MAIN PROCESSING FUNCTION:
-// REPLACE YOUR EXISTING main FUNCTION WITH THIS
-async function main(chatId, imageBuffer, messageId = null) {
+async function main(chatId, imageBuffer) {
     try {
-        // 0. Typing action
         bot.sendChatAction(chatId, 'typing');
         
-        // 1. Get raw text from VLM
-        const responseText = await identifyCardsFromImage(imageBuffer);
-        
-        // 2. Parse text directly into solver-ready objects
+        const responseText = await identifyCardsFromImage(imageBuffer, chatId);
         const parsedCards = parseResponse(responseText);
 
-        // 3. Validate parsed cards
         if (!parsedCards) {
-            const currentModel = getCurrentModel();
-            const errorMsg = `❌ ${currentModel.displayName}: Bad response (Could not extract cards)`;
-            const contextId = `${chatId}_${Date.now()}`;
-            retryContexts.set(contextId, { imageBuffer, chatId });
-            const keyboard = createRetryKeyboard(currentModelKey);
-            keyboard.inline_keyboard = keyboard.inline_keyboard.map(row => row.map(btn => ({ ...btn, callback_data: `${btn.callback_data}_${contextId}` })));
-            
-            if (messageId) {
-                await bot.editMessageText(errorMsg, { chat_id: chatId, message_id: messageId, reply_markup: keyboard });
-            } else {
-                await bot.sendMessage(chatId, errorMsg, { reply_markup: keyboard });
-            }
+            const modelInfo = geminiService.getModelInfo();
+            const errorMsg = `❌ ${modelInfo.displayName}: Could not extract cards from image.\n\nPlease try again with a clearer screenshot.`;
+            await bot.sendMessage(chatId, errorMsg);
             return;
         }
         
-        // 4. Solve and get the formatted message string
         const { solutionMessage } = solver(parsedCards);
-
-        // 5. Reply with the solution
-        if (messageId) {
-            await bot.editMessageText(solutionMessage, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' });
-        } else {
-            await bot.sendMessage(chatId, solutionMessage, { parse_mode: 'Markdown' });
-        }
+        await bot.sendMessage(chatId, solutionMessage, { parse_mode: 'Markdown' });
 
     } catch (error) {
         console.error("Processing Error:", error);
-        const currentModel = getCurrentModel();
+        const modelInfo = geminiService.getModelInfo();
         let errorMessage;
-        // Check for solver-specific errors
+        
         if (error.message && (error.message.includes('Solver') || error.message.includes('at least 13 cards'))) {
             errorMessage = 'Solver Error: ' + error.message;
         } else {
             errorMessage = extractErrorMessage(error);
         }
-        const errorMsg = `❌ ${currentModel.displayName}: ${errorMessage}`;
-        const contextId = `${chatId}_${Date.now()}`;
-        retryContexts.set(contextId, { imageBuffer, chatId });
-        const keyboard = createRetryKeyboard(currentModelKey);
-        keyboard.inline_keyboard = keyboard.inline_keyboard.map(row => row.map(btn => ({ ...btn, callback_data: `${btn.callback_data}_${contextId}` })));
         
-        if (messageId) {
-            await bot.editMessageText(errorMsg, { chat_id: chatId, message_id: messageId, reply_markup: keyboard });
-        } else {
-            await bot.sendMessage(chatId, errorMsg, { reply_markup: keyboard });
-        }
+        const errorMsg = `❌ ${modelInfo.displayName}: ${errorMessage}\n\nPlease try again.`;
+        await bot.sendMessage(chatId, errorMsg);
     }
 }
 
@@ -929,4 +647,3 @@ bot.on('polling_error', (error) => {
     console.error('Polling error:', error.code);
 });
 ```
-
