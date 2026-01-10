@@ -148,6 +148,7 @@ function solver(parsedCards) {
   const numCards = parsedCards.length;
   if (numCards < 13) throw new Error("Solver requires at least 13 cards.");
   
+  // ... (the entire middle part of the solver function remains unchanged) ...
   console.log('⏱️  [SOLVER] Step 1: Generating all 5-card combinations...');
   const step1Start = Date.now();
   const fiveCardHands = [];
