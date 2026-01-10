@@ -1,4 +1,4 @@
-// src/services/gemini.service.js
+// src/agents/fl-solver.agent.js
 
 // IMPORTS:
 const { GoogleGenAI } = require("@google/genai");
@@ -50,7 +50,7 @@ function rotateApiKey() {
     ai = new GoogleGenAI({
         apiKey: API_KEYS[activeKeyIndex],
     });
-    console.log(`🔄 [GEMINI] Rotated to API key #${activeKeyIndex + 1}`);
+    console.log(`🔄 [FL-SOLVER] Rotated to API key #${activeKeyIndex + 1}`);
     return true;
 }
 
@@ -112,7 +112,7 @@ async function identifyCardsFromImage(imageBuffer, chatId = null, bot = null) {
             
             // Try rotating API key automatically
             if (rotateApiKey()) {
-                console.log('🔄 [GEMINI] Retrying with new API key...');
+                console.log('🔄 [FL-SOLVER] Retrying with new API key...');
                 
                 // Notify user about key rotation
                 if (chatId && bot) {

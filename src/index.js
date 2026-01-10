@@ -2,8 +2,8 @@
 
 // IMPORTED MODULES:
 const TelegramBot = require('node-telegram-bot-api');
-const geminiService = require('./services/gemini.service.js');
-const { solver } = require('./services/solver.js');
+const flSolverAgent = require('./agents/fl-solver.agent.js');
+const { solver } = require('./func/fl-solver.func.js');
 
 // ENV VARIABLES
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -13,7 +13,7 @@ const bot = new TelegramBot(token, { polling: true });
 
 // FUNCTION DEF:
 async function identifyCardsFromImage(imageBuffer, chatId) {
-    return geminiService.identifyCardsFromImage(imageBuffer, chatId, bot);
+    return flSolverAgent.identifyCardsFromImage(imageBuffer, chatId, bot);
 }
 
 function parseResponse(responseText) {
@@ -75,8 +75,8 @@ function extractErrorMessage(error) {
 // BOT COMMANDS:
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
-    const modelInfo = geminiService.getModelInfo();
-    const apiKeyNum = geminiService.getActiveKeyNumber();
+    const modelInfo = flSolverAgent.getModelInfo();
+    const apiKeyNum = flSolverAgent.getActiveKeyNumber();
     
     const startMessage = `Hello! 👋 Send me a screenshot of your cards.
 
@@ -139,7 +139,7 @@ async function main(chatId, imageBuffer) {
         const parsedCards = parseResponse(responseText);
 
         if (!parsedCards) {
-            const modelInfo = geminiService.getModelInfo();
+            const modelInfo = flSolverAgent.getModelInfo();
             const errorMsg = `❌ ${modelInfo.displayName}: Could not extract cards from image.\n\nPlease try again with a clearer screenshot.`;
             await bot.sendMessage(chatId, errorMsg);
             return;
@@ -150,7 +150,7 @@ async function main(chatId, imageBuffer) {
 
     } catch (error) {
         console.error("Processing Error:", error);
-        const modelInfo = geminiService.getModelInfo();
+        const modelInfo = flSolverAgent.getModelInfo();
         let errorMessage;
         
         if (error.message && (error.message.includes('Solver') || error.message.includes('at least 13 cards'))) {
