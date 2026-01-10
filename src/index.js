@@ -2,8 +2,8 @@
 
 // IMPORTED MODULES:
 const TelegramBot = require('node-telegram-bot-api');
-const flSolverAgent = require('./agents/fl-solver.agent.js');
-const { solver } = require('./func/fl-solver.func.js');
+const flSolverAgent = require('./agents/fl-solver-agent.js');
+const { solver } = require('./func/fl-solver-func.js');
 
 // ENV VARIABLES
 const token = process.env.TELEGRAM_BOT_TOKEN;
