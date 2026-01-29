@@ -7,7 +7,11 @@ const { GoogleGenAI } = require("@google/genai");
 let activeKeyIndex = 0;
 const API_KEYS = [
     process.env.GEMINI_API_KEY,
-    process.env.GEMINI_API_KEY_2
+    process.env.GEMINI_API_KEY_2,
+    process.env.GEMINI_API_KEY_3,
+    process.env.GEMINI_API_KEY_4,
+    process.env.GEMINI_API_KEY_5,
+    process.env.GEMINI_API_KEY_6
 ].filter(Boolean); // Remove undefined keys
 
 // Initialize the Gemini client
