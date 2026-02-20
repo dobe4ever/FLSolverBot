@@ -20,10 +20,8 @@ let ai = new GoogleGenAI({
 });
 
 // CONST:
-// const MODEL_NAME = 'gemini-3-flash-preview';
-// const MODEL_DISPLAY_NAME = 'Gemini 3 Flash Preview';
-const MODEL_NAME = 'gemini-3.1-pro-preview';
-const MODEL_DISPLAY_NAME = 'Gemini 3.1 Pro Preview';
+const MODEL_NAME = 'gemini-3-flash-preview';
+const MODEL_DISPLAY_NAME = 'Gemini 3 Flash Preview';
 
 const systemInstruction = `Your job is to extract the playing cards from the picture and return the result formatted as standard poker notation.
 
